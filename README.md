@@ -20,9 +20,9 @@ For a production build, run `npm run build`, then `npm run preview` to try it lo
 
 ## Your daily workflow
 
-1. Log in to your existing calling system as usual. In ultralead+, select **Import leads**, paste your rows, and review the counts.
-2. Choose **Replace today's lead list** for a new day, or **Add to current list** to merge by account number. Replacing the list does **not** erase callbacks, sales, activations, notes, or call history.
-3. On the calling desk, copy the displayed **5- account number** and paste it into your existing system. With **Auto-copy next account** on, the next number is copied when you import, skip, select a lead, or log an outcome, subject to browser permission. The first lead on a later page load can be copied with the **Copy** button or `C`.
+1. Log in to your existing calling system as usual. Copy your rows, then **paste anywhere on the calling desk**. The list imports the moment you paste; nothing else to click. Use the **REPLACE / ADD** switch next to the paste field to say whether the paste starts today's list or merges into it — the choice is remembered, so it is a one-step import from then on. A short **UNDO** button appears in the notification if you paste the wrong thing.
+2. Prefer to check the counts before importing? Choose **Review first** on the desk, or **Import leads** in the top bar. Replacing the list does **not** erase callbacks, sales, activations, notes, or call history.
+3. On the calling desk, everything you need for the call is on one screen: the next lead, the account number, the notes, and the outcome buttons. Copy the displayed **5- account number** and paste it into your existing system. With **Auto-copy next account** on, the next number is copied when you import, skip, select a lead, or log an outcome, subject to browser permission. The first lead on a later page load can be copied with the **Copy** button or `C`.
 4. After the call, choose **No answer**, **Not interested**, **Callback**, or **Made a sale**. Customer notes are saved as you type and follow the account across imports.
 5. A sale starts in **Credit vetting**. Mark it approved to move it to **Awaiting confirmation**. Only choose **Complete activation** after the confirmations department has finished. The Activations page tracks the package and ATT/non-ATT type, with **all-time, today, and this month** filters. Declined vetting can be reopened; completed activations can be moved back if necessary.
 6. Deals change: type any package name while recording a sale, or manage package suggestions in **Data & settings**. Removing a suggestion does not alter existing sales.
@@ -66,6 +66,7 @@ On the calling desk, when not typing in a field or using a dialog:
 | `4` | Record sale |
 | `C` | Copy account number |
 | `N` | Skip to next lead |
+| `Ctrl/⌘ + V` | Paste a lead list anywhere (imports immediately, with undo) |
 
 Clipboard access normally requires HTTPS or localhost, a user action, and browser permission. If automatic copying is blocked, use the **Copy** button or manually select the number. The app reports a failure instead of claiming a copy succeeded.
 

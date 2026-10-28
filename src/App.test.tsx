@@ -73,6 +73,26 @@ describe('calling workflow', () => {
     expect(saved.sales.filter((sale: { stage: string }) => sale.stage === 'activated')).toHaveLength(1)
   })
 
+  it('imports a pasted lead list from anywhere on the desk and can undo it', async () => {
+    render(<App />)
+    const paste = new Event('paste', { bubbles: true }) as Event & { clipboardData: unknown }
+    paste.clipboardData = { getData: () => 'Paste Person\tProspect\tConsumer\t5-880\t9001010000000' }
+    fireEvent(window, paste)
+    expect(screen.getByRole('heading', { name: 'Paste Person' })).toBeInTheDocument()
+    expect(screen.queryByText('SAMPLE DATA')).not.toBeInTheDocument()
+    await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith('5-880'))
+    fireEvent.click(screen.getByRole('button', { name: 'UNDO' }))
+    expect(screen.getByText('SAMPLE DATA')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Paste Person' })).not.toBeInTheDocument()
+  })
+
+  it('keeps the chosen import mode for the next paste', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: 'ADD' }))
+    expect(screen.getByRole('button', { name: 'ADD' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByRole('button', { name: 'REPLACE' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('copies the next account on skip and does not fire shortcuts while typing', async () => {
     render(<App />)
     importRows('Person One Prospect Consumer 5-201 9001010000000\nPerson Two Prospect Consumer 5-202 9001010000000')

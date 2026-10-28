@@ -12,7 +12,7 @@ import { CallbackModal, HelpModal, SaleModal } from './components/OutcomeModals'
 import { Modal } from './components/ui'
 import { copyText } from './domain/clipboard'
 import { localDayKey } from './domain/dates'
-import type { ImportPreview } from './domain/import'
+import { parseLeads, type ImportPreview } from './domain/import'
 import { findLead, getSmartQueue, readiness } from './domain/queue'
 import { parseBackup } from './domain/storage'
 import { applyImport, clearCategory, createEmptyWorkspace, editSale, pruneExcluded, recordNoAnswer, recordNotInterested, recordSale, removeCallback, removeLead, removeSale, resetToQueue, saveCallback, saveNotes, updateSaleStage, verifyAge } from './domain/workspace'
@@ -26,6 +26,11 @@ type ModalState =
   | { type: 'help' }
   | { type: 'confirm'; title: string; description: string; confirmLabel: string; action: () => void; danger?: boolean }
   | null
+
+const IMPORT_MODE_KEY = 'ultralead-plus.import-mode'
+const readImportMode = (): 'replace' | 'append' => {
+  try { return window.localStorage.getItem(IMPORT_MODE_KEY) === 'append' ? 'append' : 'replace' } catch { return 'replace' }
+}
 
 const viewNames: Record<View, string> = { overview: 'OVERVIEW', leads: 'ALL LEADS', callbacks: 'CALLBACKS', pipeline: 'SALES PIPELINE', activations: 'ACTIVATIONS', settings: 'DATA & SETTINGS' }
 const clearDescriptions: Record<ClearCategory, { title: string; description: string }> = {
@@ -45,6 +50,9 @@ export default function App() {
   const [selection, setSelection] = useState<{ account: string; manual: boolean } | null>(null)
   const [modal, setModal] = useState<ModalState>(null)
   const [toast, setToast] = useState('')
+  const [importMode, setImportMode] = useState<'replace' | 'append'>(readImportMode)
+  const [importText, setImportText] = useState('')
+  const [undoImport, setUndoImport] = useState<(() => void) | null>(null)
   const queue = useMemo(() => getSmartQueue(workspace, now), [workspace, now])
   const selectedIsQueued = selection && queue.some(item => item.lead.accountNumber === selection.account)
   const selectedLead = selection ? findLead(workspace, selection.account) : undefined
@@ -56,11 +64,46 @@ export default function App() {
 
   useEffect(() => {
     if (!toast) return
-    const timer = window.setTimeout(() => setToast(''), 4200)
+    const timer = window.setTimeout(() => setToast(''), undoImport ? 12000 : 4200)
     return () => window.clearTimeout(timer)
-  }, [toast])
+  }, [toast, undoImport])
+
+  useEffect(() => {
+    if (!undoImport) return
+    const timer = window.setTimeout(() => setUndoImport(null), 12000)
+    return () => window.clearTimeout(timer)
+  }, [undoImport])
 
   const notify = (message: string) => setToast(message)
+  const rememberImportMode = (value: 'replace' | 'append') => {
+    setImportMode(value)
+    try { window.localStorage.setItem(IMPORT_MODE_KEY, value) } catch { /* the choice simply is not remembered */ }
+  }
+  const openImport = () => { setImportText(''); setModal({ type: 'import' }) }
+  /** Paste-to-import: one step, with a short-lived undo of the whole import. */
+  const quickImport = (text: string) => {
+    const at = new Date()
+    const preview = parseLeads(text, at)
+    if (!preview.leads.length && !preview.excluded.length) {
+      notify('That paste had no lead rows. Each row needs a name and a 5- account number.')
+      return
+    }
+    const before = workspaceRef.current
+    const next = applyImport(before, preview, importMode, at)
+    const filtered = preview.excluded.length ? `, ${preview.excluded.length} filtered out` : ''
+    advanceAfter(next, `${preview.leads.length} lead${preview.leads.length === 1 ? '' : 's'} imported${filtered}.`)
+    // Set after advancing: any later call outcome clears the undo offer so it can never swallow newer work.
+    setUndoImport(() => () => {
+      setWorkspace(before)
+      setSelection(null)
+      setUndoImport(null)
+      notify('Import undone. Everything is back the way it was.')
+    })
+  }
+  const quickImportRef = useRef(quickImport)
+  quickImportRef.current = quickImport
+  const modalOpenRef = useRef(false)
+  modalOpenRef.current = modal !== null
   const copyAccount = (account: string, success = 'Account number copied.') => {
     void copyText(account).then(() => notify(success)).catch(() => notify('Could not access clipboard. Select and copy the account number instead.'))
   }
@@ -70,6 +113,7 @@ export default function App() {
     if (workspace.settings.autoCopy) copyAccount(selected.accountNumber, 'Account number copied. Ready when you are.')
   }
   const advanceAfter = (next: Workspace, message: string) => {
+    setUndoImport(null)
     const currentTime = new Date()
     const first = getSmartQueue(next, currentTime)[0]?.lead
     setNow(currentTime)
@@ -91,6 +135,21 @@ export default function App() {
   const notInterested = () => { if (lead) advanceAfter(recordNotInterested(workspace, lead, new Date()), 'Marked not interested.') }
   const openCallback = () => { if (lead) setModal({ type: 'callback', lead, existing: callback, recordCall: true }) }
   const openSale = () => { if (lead) setModal({ type: 'sale', lead }) }
+
+  // Pasting a lead list anywhere on the desk imports it immediately. Fields keep normal paste behaviour.
+  useEffect(() => {
+    const onPaste = (event: ClipboardEvent) => {
+      if (modalOpenRef.current) return
+      const target = event.target as HTMLElement | null
+      if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return
+      const text = event.clipboardData?.getData('text/plain') ?? ''
+      if (!text.trim() || parseLeads(text, new Date()).totalRows === 0) return
+      event.preventDefault()
+      quickImportRef.current(text)
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [])
 
   useEffect(() => {
     if (view !== 'overview' || modal || !lead) return
@@ -114,6 +173,7 @@ export default function App() {
   const onImport = (preview: ImportPreview, mode: 'replace' | 'append') => {
     const next = applyImport(workspace, preview, mode, new Date())
     setModal(null)
+    setImportText('')
     setView('overview')
     advanceAfter(next, `${preview.leads.length} lead${preview.leads.length === 1 ? '' : 's'} imported.`)
   }
@@ -171,12 +231,12 @@ export default function App() {
     <a className="skip-link" href="#main-content">Skip to content</a>
     <Sidebar view={view} onNavigate={setView} workspace={workspace} mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
     <div className="app-main">
-      <header className="topbar"><div className="topbar-left"><button className="icon-button menu-button" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20} /></button><span>WORKSPACE</span><span className="topbar-divider">/</span><strong>{viewNames[view]}</strong></div><div className="topbar-right"><span className="topbar-local"><span className="tiny-dot" /> LOCAL WORKSPACE</span><button className="topbar-help" onClick={() => setModal({ type: 'help' })} aria-label="How smart cycling works"><CircleHelp size={17} /></button><button className="button top-import" onClick={() => setModal({ type: 'import' })}><Upload size={15} /> IMPORT LEADS</button></div></header>
+      <header className="topbar"><div className="topbar-left"><button className="icon-button menu-button" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20} /></button><span>WORKSPACE</span><span className="topbar-divider">/</span><strong>{viewNames[view]}</strong></div><div className="topbar-right"><span className="topbar-local"><span className="tiny-dot" /> LOCAL WORKSPACE</span><button className="topbar-help" onClick={() => setModal({ type: 'help' })} aria-label="How smart cycling works"><CircleHelp size={17} /></button><button className="button top-import" onClick={openImport}><Upload size={15} /> IMPORT LEADS</button></div></header>
       {workspace.isDemo && <section className="demo-banner" aria-label="Sample workspace notice"><div><span className="demo-tag">SAMPLE DATA</span><span>You're exploring a demo workspace. Your own leads start fresh.</span></div><button onClick={startFresh}>CLEAR SAMPLE DATA <ArrowRight size={14} /></button></section>}
       {storageWarning && <div className="storage-warning" role="alert">{storageWarning}</div>}
       <main className="main-content" id="main-content">
-        {view === 'overview' && <Dashboard workspace={workspace} now={now} queue={queue} lead={lead} callback={callback} onCopy={() => lead && copyAccount(lead.accountNumber)} onSkip={skip} onNoAnswer={noAnswer} onNotInterested={notInterested} onCallback={openCallback} onSale={openSale} onNotes={notes => lead && setWorkspace(previous => saveNotes(previous, lead.accountNumber, notes))} onNavigate={setView} onImport={() => setModal({ type: 'import' })} onHelp={() => setModal({ type: 'help' })} onAutoCopy={onAutoCopy} />}
-        {view === 'leads' && <LeadsView workspace={workspace} now={now} onImport={() => setModal({ type: 'import' })} onCopy={selected => copyAccount(selected.accountNumber)} onCall={onCall} onVerify={onVerify} onReset={onReset} onRemove={onRemoveLead} />}
+        {view === 'overview' && <Dashboard workspace={workspace} now={now} queue={queue} lead={lead} callback={callback} importMode={importMode} onImportMode={rememberImportMode} onQuickImport={quickImport} onCopy={() => lead && copyAccount(lead.accountNumber)} onSkip={skip} onNoAnswer={noAnswer} onNotInterested={notInterested} onCallback={openCallback} onSale={openSale} onNotes={notes => lead && setWorkspace(previous => saveNotes(previous, lead.accountNumber, notes))} onNavigate={setView} onImport={openImport} onHelp={() => setModal({ type: 'help' })} onAutoCopy={onAutoCopy} />}
+        {view === 'leads' && <LeadsView workspace={workspace} now={now} onImport={openImport} onCopy={selected => copyAccount(selected.accountNumber)} onCall={onCall} onVerify={onVerify} onReset={onReset} onRemove={onRemoveLead} />}
         {view === 'callbacks' && <CallbacksView workspace={workspace} now={now} onCall={onCall} onVerify={onVerify} onEdit={item => setModal({ type: 'callback', lead: findLead(workspace, item.lead.accountNumber) ?? item.lead, existing: item, recordCall: false })} onRemove={onRemoveCallback} />}
         {view === 'pipeline' && <PipelineView workspace={workspace} onStage={onStage} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onRemove={onRemoveSale} />}
         {view === 'activations' && <ActivationsView workspace={workspace} now={now} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onUndo={sale => setModal({ type: 'confirm', title: 'Move back to confirmation?', description: `${sale.lead.name}'s sale will no longer count as an activation until it is completed again.`, confirmLabel: 'MOVE BACK', action: () => applyStage(sale, 'pending_confirmation', 'Moved back to confirmation.') })} onRemove={onRemoveSale} />}
@@ -185,8 +245,8 @@ export default function App() {
       </main>
     </div>
     </div>
-    {toast && <div className="toast" role="status"><span className="tiny-dot" />{toast}<button onClick={() => setToast('')} aria-label="Dismiss notification"><X size={14} /></button></div>}
-    {modal?.type === 'import' && <ImportModal now={now} isDemo={workspace.isDemo} onClose={() => setModal(null)} onImport={onImport} />}
+    {toast && <div className="toast" role="status"><span className="tiny-dot" />{toast}{undoImport && <button className="toast-action" onClick={undoImport}>UNDO</button>}<button onClick={() => { setToast(''); setUndoImport(null) }} aria-label="Dismiss notification"><X size={14} /></button></div>}
+    {modal?.type === 'import' && <ImportModal now={now} isDemo={workspace.isDemo} text={importText} onText={setImportText} mode={importMode} onMode={rememberImportMode} onClose={() => setModal(null)} onImport={onImport} />}
     {modal?.type === 'callback' && <CallbackModal key={`${modal.lead.accountNumber}-${modal.existing?.id ?? 'new'}`} lead={modal.lead} existing={modal.existing} now={now} onClose={() => setModal(null)} onSave={(dueAt, note) => { const next = saveCallback(workspace, modal.lead, dueAt, note, new Date(), modal.recordCall); setModal(null); if (modal.recordCall) advanceAfter(next, 'Callback scheduled.'); else { setWorkspace(next); notify('Callback updated.') } }} />}
     {modal?.type === 'sale' && <SaleModal key={modal.sale?.id ?? modal.lead.accountNumber} lead={modal.lead} sale={modal.sale} workspace={workspace} onClose={() => setModal(null)} onSave={(packageName, type) => { if (modal.sale) { setWorkspace(previous => editSale(previous, modal.sale!.id, packageName, type, new Date())); notify('Sale details updated.') } else { const next = recordSale(workspace, modal.lead, packageName, type, new Date()); if (next === workspace) notify('Sale not recorded. This account already has an open or completed sale.'); else advanceAfter(next, 'Sale sent to credit vetting.') } setModal(null) }} />}
     {modal?.type === 'help' && <HelpModal onClose={() => setModal(null)} />}
