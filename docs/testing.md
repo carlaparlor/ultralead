@@ -18,6 +18,7 @@ The Vitest suite covers:
 - Per-workspace daily shuffling, due callbacks, cooldowns, three-attempt limits, fresh-lead priority, not-interested persistence, manual reset and expiry at age 60.
 - Callback upserts, sale stage transitions and duplicate protection, editable package, and the rule that ATT/non-ATT is only recorded at activation (an activation without a type is rejected, and an unactivated sale cannot carry one). Selective per-record and per-category deletion.
 - Local persistence, same-origin tab updates, backup validation, corrupt/unavailable storage and clipboard fallback/failure.
+- Insight windows: attempt tallies, contact and conversion rates, bucket stacking, funnel and activation rate, days to activate, ATT split, package ranking and previous-period comparison, including an empty workspace.
 - Customer notes and call history reachable and editable from All leads, Callbacks, Sales pipeline and Activations, including after a sale and after an activation.
 - React workflows from import through age review, callback, sale, vetting, confirmation and activation; paste-anywhere import with undo; remembered replace/add choice; notes surviving list replacement; the `N`/`X`/`C`/`S`/`V` shortcuts and arrow-key cycling; pagination; date filters; and the callback-due/clipboard timing boundary.
 - Axe accessibility smoke checks for the calling desk and import dialog. The jsdom checks exclude colour contrast because jsdom has no layout; check contrast in a real browser too.
@@ -37,6 +38,7 @@ A real Chromium smoke pass was also used to check desktop/mobile layouts, backup
 7. Delete one lead, callback and activation separately. Use each category clear action after confirming the text; verify other categories survive. Check that returning a previously not-interested or deleted-sale lead requires confirmation.
 7. Export a backup, change the workspace, restore the file, and verify the restored data. Attempt to restore invalid JSON and confirm nothing changes.
 8. Check the calling desk, lists, dialogs and navigation at desktop and narrow mobile widths. Check keyboard focus, Escape to close a dialog, that arrow keys cycle the queue without logging anything, and that shortcuts do not fire while typing.
-9. Open a second tab on the same origin and confirm ordinary edits appear in the other tab. Do not treat this as concurrent multi-user coordination.
+9. Open **Insights** after logging a mix of outcomes. Check that the counts match what you logged, that switching today / 7 days / 30 days / all time changes them, and that the funnel, ATT split and package list agree with the pipeline and activations pages.
+10. Open a second tab on the same origin and confirm ordinary edits appear in the other tab. Do not treat this as concurrent multi-user coordination.
 
 Never use real customer data for automated tests. Clipboard permissions, browser storage quotas, private-browsing behaviour, and local time zones vary by browser and should be checked in the actual workplace environment.

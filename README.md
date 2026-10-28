@@ -44,6 +44,12 @@ A row needs a name before a `5-` followed by digits. A 13-digit customer ID and 
 - Age is inferred from the first six digits (`YYMMDD`) of a 13-digit South African-style ID. Missing, malformed, impossible, or future birth dates are held for **age review** and cannot enter the automatic queue until you explicitly verify that the customer is under 60. A newly imported row must be verified again if its age is still unknown.
 - **Important limitation:** the ID's two-digit year does not encode a century. The app assumes the most recent century consistent with the current year; it cannot reliably distinguish a person over 100 from a much younger person with the same `YYMMDD`. It does not validate an ID checksum. Verify age in your source system whenever there is doubt; the filter is not proof of age.
 
+### Insights
+
+**Insights** adds up what you have already logged and shows it in one place: calls logged, contact rate, sales, activations and the average days from sale to activation, each compared with the previous period of the same length. Below that, a chart stacks each call's outcome (sale, callback, not interested, no answer) per day, the sales funnel shows how many recorded sales reached confirmation and activation, and the ATT/non-ATT split is broken down alongside your best-selling packages.
+
+Switch between **today**, **7 days**, **30 days** and **all time**. Everything is derived from your local workspace — the same attempt, sale and activation records shown elsewhere in the app — so it updates as you log outcomes, and nothing is sent anywhere. The numbers describe only your own calls: they cannot see colleagues' activity.
+
 ### How smart cycling works
 
 - Due callbacks come first, oldest due time first. Future callbacks wait until their scheduled time.

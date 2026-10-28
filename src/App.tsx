@@ -7,6 +7,7 @@ import { CallbacksView } from './components/CallbacksView'
 import { PipelineView } from './components/PipelineView'
 import { ActivationsView } from './components/ActivationsView'
 import { SettingsView } from './components/SettingsView'
+import { InsightsView } from './components/InsightsView'
 import { ImportModal } from './components/ImportModal'
 import { CustomerModal } from './components/CustomerModal'
 import { ActivationModal, CallbackModal, HelpModal, SaleModal } from './components/OutcomeModals'
@@ -35,7 +36,7 @@ const readImportMode = (): 'replace' | 'append' => {
   try { return window.localStorage.getItem(IMPORT_MODE_KEY) === 'append' ? 'append' : 'replace' } catch { return 'replace' }
 }
 
-const viewNames: Record<View, string> = { overview: 'OVERVIEW', leads: 'ALL LEADS', callbacks: 'CALLBACKS', pipeline: 'SALES PIPELINE', activations: 'ACTIVATIONS', settings: 'DATA & SETTINGS' }
+const viewNames: Record<View, string> = { overview: 'OVERVIEW', leads: 'ALL LEADS', callbacks: 'CALLBACKS', pipeline: 'SALES PIPELINE', activations: 'ACTIVATIONS', insights: 'INSIGHTS', settings: 'DATA & SETTINGS' }
 const clearDescriptions: Record<ClearCategory, { title: string; description: string }> = {
   leads: { title: 'Clear the lead list?', description: 'This removes your current daily lead list only. Callbacks, sales, activations and customer notes will stay.' },
   callbacks: { title: 'Clear all callbacks?', description: 'This removes scheduled callbacks only. Your leads, sales, activations and customer notes will stay. Leads may return to the calling queue.' },
@@ -248,6 +249,7 @@ export default function App() {
         {view === 'callbacks' && <CallbacksView workspace={workspace} now={now} onOpenCustomer={openCustomer} onCall={onCall} onVerify={onVerify} onEdit={item => setModal({ type: 'callback', lead: findLead(workspace, item.lead.accountNumber) ?? item.lead, existing: item, recordCall: false })} onRemove={onRemoveCallback} />}
         {view === 'pipeline' && <PipelineView workspace={workspace} onStage={onStage} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onRemove={onRemoveSale} onOpenCustomer={openCustomer} />}
         {view === 'activations' && <ActivationsView workspace={workspace} now={now} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onUndo={sale => setModal({ type: 'confirm', title: 'Move back to confirmation?', description: `${sale.lead.name}'s sale will no longer count as an activation until it is completed again.`, confirmLabel: 'MOVE BACK', action: () => applyStage(sale, 'pending_confirmation', 'Moved back to confirmation.') })} onRemove={onRemoveSale} onOpenCustomer={openCustomer} />}
+        {view === 'insights' && <InsightsView workspace={workspace} now={now} />}
         {view === 'settings' && <SettingsView workspace={workspace} onAutoCopy={onAutoCopy} onAddPackage={name => { const trimmed = name.trim(); if (trimmed) setWorkspace(previous => previous.packages.some(item => item.toLowerCase() === trimmed.toLowerCase()) ? previous : { ...previous, packages: [...previous.packages, trimmed] }) }} onRemovePackage={name => setWorkspace(previous => ({ ...previous, packages: previous.packages.filter(item => item !== name) }))} onClear={onClear} onExport={onExport} onRestore={file => { void onRestore(file) }} />}
         <footer className="app-footer"><span>ULTRALEAD<span>+</span> <i>/</i> A LITTLE MORE FOCUS, EVERY DAY.</span><span>YOUR WORKSPACE <i>•</i> YOUR PACE</span></footer>
       </main>

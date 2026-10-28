@@ -1,4 +1,4 @@
-import { Archive, CalendarClock, ChartNoAxesCombined, CheckCheck, LayoutDashboard, List, Settings2, X } from 'lucide-react'
+import { Archive, CalendarClock, ChartNoAxesCombined, CheckCheck, LayoutDashboard, List, Settings2, TrendingUp, X } from 'lucide-react'
 import type { View, Workspace } from '../domain/types'
 
 const mainItems: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
@@ -7,6 +7,7 @@ const mainItems: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'callbacks', label: 'Callbacks', icon: CalendarClock },
   { id: 'pipeline', label: 'Sales pipeline', icon: ChartNoAxesCombined },
   { id: 'activations', label: 'Activations', icon: CheckCheck },
+  { id: 'insights', label: 'Insights', icon: TrendingUp },
 ]
 
 export function Sidebar({ view, onNavigate, workspace, mobileOpen, onClose }: { view: View; onNavigate: (view: View) => void; workspace: Workspace; mobileOpen: boolean; onClose: () => void }) {
