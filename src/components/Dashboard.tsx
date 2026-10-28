@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, ArrowUpRight, CalendarClock, Check, CheckCheck, ClipboardPaste, Copy, Headphones, Layers3, ListFilter, RefreshCw, UsersRound } from 'lucide-react'
+import { ArrowRight, CalendarClock, Check, CheckCheck, ClipboardPaste, Copy, Headphones, Layers3, ListFilter, RefreshCw, UsersRound } from 'lucide-react'
 import { formatDate, formatListDate, relativeDue } from '../domain/dates'
 import { createQueueIndex, readiness, type QueueItem } from '../domain/queue'
 import type { Callback, Lead, View, Workspace } from '../domain/types'
@@ -31,11 +31,11 @@ function QuickPaste({ mode, onMode, onImport, onOpen }: { mode: 'replace' | 'app
   </div>
 }
 
-export function Dashboard({ workspace, now, queue, lead, callback, importMode, onImportMode, onQuickImport, onCopy, onCycle, onNoAnswer, onNotInterested, onCallback, onSale, onNotes, onNavigate, onImport, onHelp, onAutoCopy }: {
+export function Dashboard({ workspace, now, queue, lead, callback, importMode, onImportMode, onQuickImport, onCopy, onCycle, onNoAnswer, onNotInterested, onCallback, onSale, onNotes, onNavigate, onImport, onAutoCopy }: {
   workspace: Workspace; now: Date; queue: QueueItem[]; lead: Lead | undefined; callback: Callback | undefined;
   importMode: 'replace' | 'append'; onImportMode: (mode: 'replace' | 'append') => void; onQuickImport: (text: string) => void;
   onCopy: () => void; onCycle: (direction: 1 | -1) => void; onNoAnswer: () => void; onNotInterested: () => void; onCallback: () => void; onSale: () => void;
-  onNotes: (notes: string) => void; onNavigate: (view: View) => void; onImport: () => void; onHelp: () => void; onAutoCopy: (value: boolean) => void;
+  onNotes: (notes: string) => void; onNavigate: (view: View) => void; onImport: () => void; onAutoCopy: (value: boolean) => void;
 }) {
   const [rail, setRail] = useState<'callbacks' | 'pipeline' | 'activity'>('callbacks')
   const queueIndex = createQueueIndex(workspace)
@@ -72,7 +72,7 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
 
     <div className="dashboard-columns">
       <section className="calling-section" aria-labelledby="calling-heading">
-        <div className="section-heading"><div><h2 id="calling-heading">Next lead</h2><p className="section-sub">{fresh} fresh · {retries} retries</p></div></div>
+        <h2 id="calling-heading" className="sr-only">Next lead</h2>
         {lead ? <article className="lead-card">
           <div className="lead-card-top"><div className="lead-top-label"><span className={`light-dot ${isDue ? 'is-due' : ''}`} /> {isDue ? 'CALLBACK DUE' : 'YOUR NEXT LEAD'} <span className="muted-slash">/</span> {rank >= 0 ? `${formatCount(rank + 1)} OF ${formatCount(queue.length)}` : 'MANUAL PICK'}</div><button className="skip-button" onClick={() => onCycle(1)} title="Next lead (→)">SKIP LEAD <ArrowRight size={15} /></button></div>
           <div className="lead-identity"><Initials name={lead.name} /><div className="lead-name-block"><h3>{lead.name}</h3><div className="lead-tags"><span>{lead.sourceStatus.toUpperCase()}</span><i /> <span>{isDue ? 'CALLBACK' : 'LEAD'}</span></div></div></div>
@@ -89,22 +89,22 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
         </article> : <div className="lead-card lead-empty"><EmptyState title="Queue is clear." action={ageReview ? <button className="button button-primary" onClick={() => onNavigate('leads')}>Review {ageReview} lead{ageReview === 1 ? '' : 's'} <ArrowRight size={15} /></button> : <button className="button button-primary" onClick={onImport}>Import leads <ArrowRight size={15} /></button>}>
           {ageReview ? 'Some leads need an age check first.' : workspace.leads.length || workspace.callbacks.length ? 'Nothing is ready right now. Callbacks and retries appear here when due.' : 'Paste a lead list to start calling.'}
         </EmptyState></div>}
-        <div className="desk-footer"><label><span>AUTO-COPY NEXT ACCOUNT</span><Toggle checked={workspace.settings.autoCopy} onChange={onAutoCopy} label="Auto-copy next account" /></label><span className="desk-hint">← → CYCLE · ⌘/CTRL V IMPORT</span></div>
+        <div className="desk-footer"><label><span>AUTO-COPY NEXT ACCOUNT</span><Toggle checked={workspace.settings.autoCopy} onChange={onAutoCopy} label="Auto-copy next account" /></label><span className="desk-hint">{fresh} fresh · {retries} retries · ← → CYCLE</span></div>
       </section>
 
       <aside className="focus-column" aria-label="At a glance">
         <div className="rail-tabs" role="group" aria-label="At a glance sections">
-          <button className={rail === 'callbacks' ? 'is-on' : ''} aria-pressed={rail === 'callbacks'} onClick={() => setRail('callbacks')}>Follow-ups <span>{workspace.callbacks.length}</span></button>
-          <button className={rail === 'pipeline' ? 'is-on' : ''} aria-pressed={rail === 'pipeline'} onClick={() => setRail('pipeline')}>Deals <span>{activeSales.length}</span></button>
-          <button className={rail === 'activity' ? 'is-on' : ''} aria-pressed={rail === 'activity'} onClick={() => setRail('activity')}>Latest <span>{workspace.activity.length}</span></button>
+          <button className={rail === 'callbacks' ? 'is-on' : ''} aria-pressed={rail === 'callbacks'} onClick={() => setRail('callbacks')}><span className="rail-tab-label">Follow-ups</span><span className="rail-tab-count">{formatCount(workspace.callbacks.length)}</span></button>
+          <button className={rail === 'pipeline' ? 'is-on' : ''} aria-pressed={rail === 'pipeline'} onClick={() => setRail('pipeline')}><span className="rail-tab-label">Deals</span><span className="rail-tab-count">{formatCount(activeSales.length)}</span></button>
+          <button className={rail === 'activity' ? 'is-on' : ''} aria-pressed={rail === 'activity'} onClick={() => setRail('activity')}><span className="rail-tab-label">Latest</span><span className="rail-tab-count">{formatCount(workspace.activity.length)}</span></button>
         </div>
         <div className="focus-panel">
           {rail === 'callbacks' && <>
             {scheduled.length ? <div className="focus-list">{scheduled.slice(0, 4).map(item => {
               const dueNow = new Date(item.dueAt).getTime() <= now.getTime()
               return <button className="focus-row" key={item.id} onClick={() => onNavigate('callbacks')}><Initials name={item.lead.name} /><span className="focus-person"><strong>{item.lead.name}</strong><small>{item.lead.accountNumber}</small></span><span className={`focus-time ${dueNow ? 'due' : ''}`}>{relativeDue(item.dueAt, now)}</span></button>
-            })}</div> : <div className="focus-empty">No callbacks scheduled yet.</div>}
-            <button className="panel-link" onClick={() => onNavigate('callbacks')}>ALL CALLBACKS <ArrowRight size={14} /></button>
+            })}</div> : <div className="focus-empty">No callbacks yet.</div>}
+            {scheduled.length > 0 && <button className="panel-link" onClick={() => onNavigate('callbacks')}>ALL CALLBACKS <ArrowRight size={14} /></button>}
           </>}
           {rail === 'pipeline' && <>
             <div className="pipeline-lines">
@@ -119,7 +119,7 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
             {workspace.activity.length ? <div className="rail-activity">{workspace.activity.slice(0, 5).map(item => <div className="activity-row" key={item.id}><div className="activity-icon">{item.description.includes('Activation') ? <CheckCheck size={15} /> : item.description.includes('Callback') ? <CalendarClock size={15} /> : item.description.includes('Sale') ? <Layers3 size={15} /> : <Headphones size={15} />}</div><strong>{item.name}</strong><span>{item.description}</span><time>{formatDate(item.at, { hour: '2-digit', minute: '2-digit', hour12: false })}</time></div>)}</div> : <div className="activity-empty"><ListFilter size={16} /> Your call activity will appear here.</div>}
           </>}
         </div>
-        <div className="cycle-note"><div className="cycle-icon"><RefreshCw size={16} /></div><div><strong>Shortcuts</strong><p><kbd>N</kbd> no answer · <kbd>X</kbd> not interested · <kbd>C</kbd> callback · <kbd>S</kbd> sale · <kbd>V</kbd> copy · <kbd>←</kbd><kbd>→</kbd> cycle</p><button onClick={onHelp}>HOW THE QUEUE WORKS <ArrowRight size={14} /></button></div><ArrowUpRight size={14} className="cycle-corner" /></div>
+        <div className="cycle-note"><div className="cycle-icon"><RefreshCw size={16} /></div><div><strong>Shortcuts</strong><p><kbd>N</kbd> no answer · <kbd>X</kbd> not interested · <kbd>C</kbd> callback · <kbd>S</kbd> sale · <kbd>V</kbd> copy · <kbd>←</kbd><kbd>→</kbd> cycle</p></div></div>
       </aside>
     </div>
   </>
