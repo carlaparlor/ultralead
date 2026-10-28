@@ -40,7 +40,7 @@ describe('calling workflow', () => {
     await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith('5-102'))
 
     fireEvent.change(screen.getByLabelText('CUSTOMER NOTES'), { target: { value: 'Prefers afternoons' } })
-    fireEvent.click(screen.getByRole('button', { name: /Callback 3/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Callback C/ }))
     fireEvent.change(dialog().getByLabelText(/CALLBACK NOTE/), { target: { value: 'Call after work' } })
     fireEvent.click(dialog().getByRole('button', { name: /SAVE CALLBACK/ }))
     expect(screen.getByRole('heading', { name: 'Your queue is clear.' })).toBeInTheDocument()
@@ -99,6 +99,29 @@ describe('calling workflow', () => {
     expect(screen.getByRole('button', { name: 'REPLACE' })).toHaveAttribute('aria-pressed', 'false')
   })
 
+  it('uses n, x, c and the arrow keys on the calling desk', async () => {
+    render(<App />)
+    importRows('Cycle One Prospect Consumer 5-921 9001010000000\nCycle Two Prospect Consumer 5-922 9001010000000')
+    const shown = () => screen.getByText(/^5-92[12]$/, { selector: '.account-box strong' }).textContent
+    const first = shown()
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    const second = shown()
+    expect(second).not.toBe(first)
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(shown()).toBe(first)
+    // c opens the callback dialog
+    fireEvent.keyDown(window, { key: 'c' })
+    expect(dialog().getByLabelText(/CALLBACK NOTE/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: /CANCEL/ }))
+    // n logs a no answer for the current lead; x marks not interested
+    fireEvent.keyDown(window, { key: 'n' })
+    fireEvent.keyDown(window, { key: 'x' })
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!)
+    const outcomes = Object.values(saved.profiles as Record<string, { attempts: { outcome: string }[]; doNotCall: boolean }>)
+      .flatMap(profile => profile.attempts.map(attempt => attempt.outcome))
+    expect(outcomes).toEqual(expect.arrayContaining(['no_answer', 'not_interested']))
+  })
+
   it('shows no activation type for sales still in vetting or confirmation', () => {
     const now = new Date()
     const a = makeLead('5-861', { name: 'Vetting Person' }), b = makeLead('5-862', { name: 'Confirming Person' })
@@ -114,18 +137,18 @@ describe('calling workflow', () => {
     expect(screen.queryByText('ATT', { selector: '.sale-details strong' })).not.toBeInTheDocument()
   })
 
-  it('copies the next account on skip and does not fire shortcuts while typing', async () => {
+  it('cycles with the arrows and does not fire shortcuts while typing', async () => {
     render(<App />)
     importRows('Person One Prospect Consumer 5-201 9001010000000\nPerson Two Prospect Consumer 5-202 9001010000000')
     const initial = screen.getByText(/^5-20[12]$/, { selector: '.account-box strong' }).textContent
     clipboard.writeText.mockClear()
-    fireEvent.keyDown(screen.getByLabelText('CUSTOMER NOTES'), { key: '1' })
+    fireEvent.keyDown(screen.getByLabelText('CUSTOMER NOTES'), { key: 'n' })
     expect(screen.getByText(/^5-20[12]$/, { selector: '.account-box strong' })).toHaveTextContent(initial!)
     fireEvent.click(screen.getByRole('button', { name: /SKIP LEAD/ }))
     const next = screen.getByText(/^5-20[12]$/, { selector: '.account-box strong' }).textContent
     expect(next).not.toBe(initial)
     await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith(next))
-    fireEvent.keyDown(window, { key: '2' })
+    fireEvent.keyDown(window, { key: 'x' })
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!)
     expect(saved.profiles[next!].doNotCall).toBe(true)
   })

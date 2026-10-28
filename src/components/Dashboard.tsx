@@ -31,10 +31,10 @@ function QuickPaste({ mode, onMode, onImport, onOpen }: { mode: 'replace' | 'app
   </div>
 }
 
-export function Dashboard({ workspace, now, queue, lead, callback, importMode, onImportMode, onQuickImport, onCopy, onSkip, onNoAnswer, onNotInterested, onCallback, onSale, onNotes, onNavigate, onImport, onHelp, onAutoCopy }: {
+export function Dashboard({ workspace, now, queue, lead, callback, importMode, onImportMode, onQuickImport, onCopy, onCycle, onNoAnswer, onNotInterested, onCallback, onSale, onNotes, onNavigate, onImport, onHelp, onAutoCopy }: {
   workspace: Workspace; now: Date; queue: QueueItem[]; lead: Lead | undefined; callback: Callback | undefined;
   importMode: 'replace' | 'append'; onImportMode: (mode: 'replace' | 'append') => void; onQuickImport: (text: string) => void;
-  onCopy: () => void; onSkip: () => void; onNoAnswer: () => void; onNotInterested: () => void; onCallback: () => void; onSale: () => void;
+  onCopy: () => void; onCycle: (direction: 1 | -1) => void; onNoAnswer: () => void; onNotInterested: () => void; onCallback: () => void; onSale: () => void;
   onNotes: (notes: string) => void; onNavigate: (view: View) => void; onImport: () => void; onHelp: () => void; onAutoCopy: (value: boolean) => void;
 }) {
   const [rail, setRail] = useState<'callbacks' | 'pipeline' | 'activity'>('callbacks')
@@ -74,22 +74,22 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
       <section className="calling-section" aria-labelledby="calling-heading">
         <div className="section-heading"><div><h2 id="calling-heading">Next in line<span className="heading-period">.</span></h2><p className="section-sub">One customer at a time · {fresh} fresh · {retries} retries</p></div><button className="smart-badge" onClick={onHelp}><Shuffle size={13} /> SMART CYCLING <span>↗</span></button></div>
         {lead ? <article className="lead-card">
-          <div className="lead-card-top"><div className="lead-top-label"><span className={`light-dot ${isDue ? 'is-due' : ''}`} /> {isDue ? 'CALLBACK DUE' : 'YOUR NEXT LEAD'} <span className="muted-slash">/</span> {rank >= 0 ? `${formatCount(rank + 1)} OF ${formatCount(queue.length)}` : 'MANUAL PICK'}</div><button className="skip-button" onClick={onSkip}>SKIP LEAD <ArrowRight size={15} /></button></div>
+          <div className="lead-card-top"><div className="lead-top-label"><span className={`light-dot ${isDue ? 'is-due' : ''}`} /> {isDue ? 'CALLBACK DUE' : 'YOUR NEXT LEAD'} <span className="muted-slash">/</span> {rank >= 0 ? `${formatCount(rank + 1)} OF ${formatCount(queue.length)}` : 'MANUAL PICK'}</div><button className="skip-button" onClick={() => onCycle(1)} title="Next lead (→)">SKIP LEAD <ArrowRight size={15} /></button></div>
           <div className="lead-identity"><Initials name={lead.name} /><div className="lead-name-block"><h3>{lead.name}</h3><div className="lead-tags"><span>{lead.sourceStatus.toUpperCase()}</span><i /> <span>{isDue ? 'CALLBACK' : 'LEAD'}</span></div></div></div>
           <div className="account-box"><div><span className="field-caption">ACCOUNT NUMBER</span><strong>{lead.accountNumber}</strong></div><button className="copy-button" onClick={onCopy}><Copy size={15} /> <span>COPY</span></button></div>
           <div className="lead-meta"><div><span className="field-caption">CUSTOMER ID</span><strong>{lead.customerId || 'NOT PROVIDED'}</strong></div><div><span className="field-caption">LIST DATE</span><strong>{formatListDate(lead.listDate)}</strong></div><div><span className="field-caption">ATTEMPTS</span><strong>{formatCount(attempts)}</strong></div></div>
           {callback?.note && <div className="callback-note"><CalendarClock size={15} /><span><strong>CALLBACK NOTE</strong> {callback.note}</span></div>}
           <div className="lead-notes"><div className="light-section-label"><label htmlFor="lead-notes">CUSTOMER NOTES</label><span><Check size={12} /> AUTO-SAVED</span></div><textarea id="lead-notes" value={workspace.profiles[lead.accountNumber]?.notes ?? ''} onChange={event => onNotes(event.target.value)} placeholder="Add a note for next time..." rows={2} /></div>
           <div className="outcome-section"><div className="light-section-label"><span>LOG THE OUTCOME</span><span className="outcome-hint">AFTER YOUR CALL</span></div><div className="outcome-actions">
-            <button className="outcome-no-answer" onClick={onNoAnswer}><span>No answer</span><kbd>1</kbd></button>
-            <button className="outcome-not-interested" onClick={onNotInterested}><span>Not interested</span><kbd>2</kbd></button>
-            <button className="outcome-callback" onClick={onCallback}><span>Callback</span><kbd>3</kbd></button>
-            <button className="sale-action" onClick={onSale}><span>Made a sale</span><kbd>4</kbd></button>
+            <button className="outcome-no-answer" onClick={onNoAnswer}><span>No answer</span><kbd>N</kbd></button>
+            <button className="outcome-not-interested" onClick={onNotInterested}><span>Not interested</span><kbd>X</kbd></button>
+            <button className="outcome-callback" onClick={onCallback}><span>Callback</span><kbd>C</kbd></button>
+            <button className="sale-action" onClick={onSale}><span>Made a sale</span><kbd>S</kbd></button>
           </div></div>
         </article> : <div className="lead-card lead-empty"><EmptyState title="Your queue is clear." action={ageReview ? <button className="button button-dark" onClick={() => onNavigate('leads')}>Review {ageReview} lead{ageReview === 1 ? '' : 's'} <ArrowRight size={15} /></button> : <button className="button button-dark" onClick={onImport}>Import leads <ArrowRight size={15} /></button>}>
           {ageReview ? 'Some leads need an age check before they can be called.' : workspace.leads.length || workspace.callbacks.length ? 'There are no leads ready right now. Callbacks and spaced retries will appear here when due.' : 'Paste your lead list to build a smarter calling queue.'}
         </EmptyState></div>}
-        <div className="desk-footer"><label><span>AUTO-COPY NEXT ACCOUNT</span><Toggle checked={workspace.settings.autoCopy} onChange={onAutoCopy} label="Auto-copy next account" /></label><span className="desk-hint">PASTE ANYWHERE TO IMPORT · ⌘/CTRL V</span></div>
+        <div className="desk-footer"><label><span>AUTO-COPY NEXT ACCOUNT</span><Toggle checked={workspace.settings.autoCopy} onChange={onAutoCopy} label="Auto-copy next account" /></label><span className="desk-hint">← → ARROW KEYS CYCLE · ⌘/CTRL V TO IMPORT ANYWHERE</span></div>
       </section>
 
       <aside className="focus-column" aria-label="At a glance">
@@ -119,7 +119,7 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
             {workspace.activity.length ? <div className="rail-activity">{workspace.activity.slice(0, 5).map(item => <div className="activity-row" key={item.id}><div className="activity-icon">{item.description.includes('Activation') ? <CheckCheck size={15} /> : item.description.includes('Callback') ? <CalendarClock size={15} /> : item.description.includes('Sale') ? <Layers3 size={15} /> : <Headphones size={15} />}</div><strong>{item.name}</strong><span>{item.description}</span><time>{formatDate(item.at, { hour: '2-digit', minute: '2-digit', hour12: false })}</time></div>)}</div> : <div className="activity-empty"><ListFilter size={16} /> Your call activity will appear here.</div>}
           </>}
         </div>
-        <div className="cycle-note"><div className="cycle-icon"><RefreshCw size={16} /></div><div><strong>Keys that save you time.</strong><p><kbd>1</kbd> no answer · <kbd>2</kbd> not interested · <kbd>3</kbd> callback · <kbd>4</kbd> sale · <kbd>C</kbd> copy · <kbd>N</kbd> skip</p><button onClick={onHelp}>HOW CYCLING WORKS <ArrowRight size={14} /></button></div><ArrowUpRight size={14} className="cycle-corner" /></div>
+        <div className="cycle-note"><div className="cycle-icon"><RefreshCw size={16} /></div><div><strong>Keys that save you time.</strong><p><kbd>N</kbd> no answer · <kbd>X</kbd> not interested · <kbd>C</kbd> callback · <kbd>S</kbd> sale · <kbd>V</kbd> copy · <kbd>←</kbd><kbd>→</kbd> cycle</p><button onClick={onHelp}>HOW CYCLING WORKS <ArrowRight size={14} /></button></div><ArrowUpRight size={14} className="cycle-corner" /></div>
       </aside>
     </div>
   </>

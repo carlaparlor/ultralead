@@ -1,4 +1,4 @@
-import { Activity, Archive, CalendarClock, ChartNoAxesCombined, CheckCheck, LayoutDashboard, List, Settings2, X } from 'lucide-react'
+import { Archive, CalendarClock, ChartNoAxesCombined, CheckCheck, LayoutDashboard, List, Settings2, X } from 'lucide-react'
 import type { View, Workspace } from '../domain/types'
 
 const mainItems: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
@@ -36,7 +36,6 @@ export function Sidebar({ view, onNavigate, workspace, mobileOpen, onClose }: { 
       </nav>
       <div className="sidebar-bottom">
         <div className="sidebar-rule" />
-        <div className="sidebar-mode"><div className="mode-icon"><Activity size={15} /></div><div><strong>Smart cycling</strong><small><span className="tiny-dot" /> ACTIVE</small></div><span className="mode-plus">↗</span></div>
         <div className="local-label"><Archive size={13} /><span>PRIVATE TO THIS BROWSER</span></div>
       </div>
     </aside>

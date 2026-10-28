@@ -123,14 +123,16 @@ export default function App() {
     if (first && next.settings.autoCopy) copyAccount(first.accountNumber, `${message} Next account copied.`)
     else notify(message)
   }
-  const skip = () => {
-    if (!lead) return
+  /** Arrow keys and the desk arrows walk the queue without logging an outcome. */
+  const cycle = (direction: 1 | -1) => {
+    if (!lead || queue.length < 2) { notify('There are no other leads ready right now.'); return }
     const index = queue.findIndex(item => item.lead.accountNumber === lead.accountNumber)
-    const next = index < 0 ? queue[0]?.lead : queue[(index + 1) % queue.length]?.lead
+    const from = index < 0 ? 0 : index
+    const next = queue[(from + direction + queue.length) % queue.length]?.lead
     if (!next || next.accountNumber === lead.accountNumber) { notify('There are no other leads ready right now.'); return }
     setSelection({ account: next.accountNumber, manual: false })
-    if (workspace.settings.autoCopy) copyAccount(next.accountNumber, 'Skipped. Next account copied.')
-    else notify('Lead skipped for now.')
+    if (workspace.settings.autoCopy) copyAccount(next.accountNumber, direction > 0 ? 'Next lead. Account copied.' : 'Previous lead. Account copied.')
+    else notify(direction > 0 ? 'Next lead.' : 'Previous lead.')
   }
   const noAnswer = () => { if (lead) advanceAfter(recordNoAnswer(workspace, lead, new Date()), 'No answer saved.') }
   const notInterested = () => { if (lead) advanceAfter(recordNotInterested(workspace, lead, new Date()), 'Marked not interested.') }
@@ -157,13 +159,14 @@ export default function App() {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (event.altKey || event.ctrlKey || event.metaKey || target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '')) return
+      if (event.key === 'ArrowRight') { event.preventDefault(); cycle(1); return }
+      if (event.key === 'ArrowLeft') { event.preventDefault(); cycle(-1); return }
       const key = event.key.toLowerCase()
-      if (key === '1') { event.preventDefault(); noAnswer() }
-      else if (key === '2') { event.preventDefault(); notInterested() }
-      else if (key === '3') { event.preventDefault(); openCallback() }
-      else if (key === '4') { event.preventDefault(); openSale() }
-      else if (key === 'c') { event.preventDefault(); copyAccount(lead.accountNumber) }
-      else if (key === 'n') { event.preventDefault(); skip() }
+      if (key === 'n') { event.preventDefault(); noAnswer() }
+      else if (key === 'x') { event.preventDefault(); notInterested() }
+      else if (key === 'c') { event.preventDefault(); openCallback() }
+      else if (key === 's') { event.preventDefault(); openSale() }
+      else if (key === 'v') { event.preventDefault(); copyAccount(lead.accountNumber) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -237,7 +240,7 @@ export default function App() {
       {workspace.isDemo && <section className="demo-banner" aria-label="Sample workspace notice"><div><span className="demo-tag">SAMPLE DATA</span><span>You're exploring a demo workspace. Your own leads start fresh.</span></div><button onClick={startFresh}>CLEAR SAMPLE DATA <ArrowRight size={14} /></button></section>}
       {storageWarning && <div className="storage-warning" role="alert">{storageWarning}</div>}
       <main className="main-content" id="main-content">
-        {view === 'overview' && <Dashboard workspace={workspace} now={now} queue={queue} lead={lead} callback={callback} importMode={importMode} onImportMode={rememberImportMode} onQuickImport={quickImport} onCopy={() => lead && copyAccount(lead.accountNumber)} onSkip={skip} onNoAnswer={noAnswer} onNotInterested={notInterested} onCallback={openCallback} onSale={openSale} onNotes={notes => lead && setWorkspace(previous => saveNotes(previous, lead.accountNumber, notes))} onNavigate={setView} onImport={openImport} onHelp={() => setModal({ type: 'help' })} onAutoCopy={onAutoCopy} />}
+        {view === 'overview' && <Dashboard workspace={workspace} now={now} queue={queue} lead={lead} callback={callback} importMode={importMode} onImportMode={rememberImportMode} onQuickImport={quickImport} onCopy={() => lead && copyAccount(lead.accountNumber)} onCycle={cycle} onNoAnswer={noAnswer} onNotInterested={notInterested} onCallback={openCallback} onSale={openSale} onNotes={notes => lead && setWorkspace(previous => saveNotes(previous, lead.accountNumber, notes))} onNavigate={setView} onImport={openImport} onHelp={() => setModal({ type: 'help' })} onAutoCopy={onAutoCopy} />}
         {view === 'leads' && <LeadsView workspace={workspace} now={now} onImport={openImport} onCopy={selected => copyAccount(selected.accountNumber)} onCall={onCall} onVerify={onVerify} onReset={onReset} onRemove={onRemoveLead} />}
         {view === 'callbacks' && <CallbacksView workspace={workspace} now={now} onCall={onCall} onVerify={onVerify} onEdit={item => setModal({ type: 'callback', lead: findLead(workspace, item.lead.accountNumber) ?? item.lead, existing: item, recordCall: false })} onRemove={onRemoveCallback} />}
         {view === 'pipeline' && <PipelineView workspace={workspace} onStage={onStage} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onRemove={onRemoveSale} />}

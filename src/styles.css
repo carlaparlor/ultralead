@@ -56,14 +56,9 @@ button { color: inherit; }
 .nav-item.active svg { color: #e0e7dc; }
 .manage-label { margin-top: 34px; }
 .sidebar-bottom { margin-top: auto; padding: 0 10px; }
-.sidebar-rule { height: 1px; background: #343734; margin-bottom: 21px; }
-.sidebar-mode { display: flex; align-items: center; gap: 11px; }
-.mode-icon { width: 32px; height: 32px; display: grid; place-items: center; color: #c7d1c3; border: 1px solid #464c44; }
-.sidebar-mode strong { display: block; font-size: 10px; font-weight: 700; }
-.sidebar-mode small { display: block; color: #939e90; font-size: 9px; margin-top: 6px; letter-spacing: .05em; }
-.mode-plus { margin-left: auto; color: #777f75; font-size: 15px; }
+.sidebar-rule { height: 1px; background: #343734; margin-bottom: 18px; }
 .tiny-dot { display: inline-block; width: 6px; height: 6px; background: var(--green); border-radius: 50%; vertical-align: middle; margin-right: 5px; }
-.local-label { display: flex; align-items: center; gap: 8px; border-top: 1px solid #343734; color: #81877e; font-size: 8px; letter-spacing: .06em; margin-top: 23px; padding-top: 18px; white-space: nowrap; }
+.local-label { display: flex; align-items: center; gap: 8px; border-top: 1px solid #343734; color: #81877e; font-size: 8px; letter-spacing: .06em; padding-top: 16px; white-space: nowrap; }
 .local-label svg { color: #929990; }
 .close-nav, .menu-button, .mobile-scrim { display: none !important; }
 .app-main { margin-left: 232px; min-height: 100vh; }
@@ -441,6 +436,12 @@ input[type='datetime-local'] { color-scheme: dark; }
 .help-body li strong, .help-body li span { display: block; }
 .help-body li strong { color: #e4ebe0; font-size: 11px; }
 .help-body li span { color: #a7b5a4; font-size: 10px; line-height: 1.6; margin-top: 5px; }
+.shortcut-list { margin: 20px 0 0; padding: 14px; border: 1px solid #4b5648; }
+.shortcut-list dl { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 16px; margin: 10px 0 0; }
+.shortcut-list dl > div { display: flex; align-items: center; gap: 9px; }
+.shortcut-list dt { display: flex; gap: 3px; margin: 0; }
+.shortcut-list kbd { color: #dbe8d6; border-color: #6d7d68; background: #394338; padding: 3px 5px; font-size: 9px; }
+.shortcut-list dd { margin: 0; color: #bcc9b8; font-size: 10px; }
 .help-warning { background: #394138; border: 1px solid #596957; padding: 12px; color: #d0ddcb; font-size: 10px; line-height: 1.65; }
 .confirm-description { margin-bottom: 0; font-size: 12px; }
 .toast { position: fixed; z-index: 70; bottom: 20px; right: 22px; display: flex; align-items: center; gap: 9px; max-width: min(420px, calc(100vw - 40px)); padding: 13px 14px; border: 1px solid #85957f; background: #333d32; color: #e1eddd; font-size: 11px; line-height: 1.4; box-shadow: 0 10px 30px #0004; }
