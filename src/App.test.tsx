@@ -3,7 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import App from './App'
 import { STORAGE_KEY } from './domain/storage'
 import { makeLead } from './domain/testFixtures'
-import { recordNotInterested, recordSale, saveCallback, saveNotes, updateSaleStage } from './domain/workspace'
+import { recordNoAnswer, recordNotInterested, recordSale, saveCallback, saveNotes, updateSaleStage } from './domain/workspace'
 import { createEmptyWorkspace } from './domain/workspace'
 
 const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) }
@@ -157,6 +157,38 @@ describe('calling workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: /All leads/ }))
     fireEvent.click(screen.getByRole('button', { name: 'Notes and history for Sold Person' }))
     expect(dialog().getByLabelText(/CUSTOMER NOTES/)).toHaveValue('Prefers Friday delivery')
+  })
+
+  it('shows calling insights for the chosen period', () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      const now = new Date(2026, 9, 28, 10)
+      vi.setSystemTime(now)
+      const a = makeLead('5-881', { name: 'Insight Person' }), b = makeLead('5-882', { name: 'Older Person' })
+      let ws = { ...createEmptyWorkspace(now), leads: [a, b] }
+      ws = recordNotInterested(ws, a, now)
+      ws = recordNoAnswer(ws, b, new Date(now.getTime() - 2 * 60 * 60 * 1000))
+      ws = recordSale(ws, b, 'Insight Deal', now)
+      const saleId = ws.sales[0].id
+      ws = updateSaleStage(ws, saleId, 'pending_confirmation', now)
+      ws = updateSaleStage(ws, saleId, 'activated', now, 'ATT')
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+      render(<App />)
+      fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
+      expect(screen.getByRole('heading', { name: /How you're doing/ })).toBeInTheDocument()
+      // Today: three attempts (not interested, no answer, sale)
+      expect(screen.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
+      expect(screen.getByText('SALES').parentElement).toHaveTextContent('1')
+      expect(screen.getByText('ACTIVATIONS').parentElement).toHaveTextContent('1')
+      expect(screen.getByText('ATT vs non-ATT')).toBeInTheDocument()
+      expect(screen.getAllByText(/Insight Deal/).length).toBeGreaterThan(0)
+      // Narrow the period to today, then widen it: the counts follow the window.
+      fireEvent.click(screen.getByRole('button', { name: 'TODAY' }))
+      expect(screen.getByRole('button', { name: 'TODAY' })).toHaveAttribute('aria-pressed', 'true')
+      expect(screen.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
+      fireEvent.click(screen.getByRole('button', { name: 'ALL TIME' }))
+      expect(screen.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
+    } finally { vi.useRealTimers() }
   })
 
   it('shows no activation type for sales still in vetting or confirmation', () => {

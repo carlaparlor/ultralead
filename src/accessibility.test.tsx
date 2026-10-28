@@ -16,6 +16,11 @@ describe('accessibility smoke checks', () => {
     render(<App />)
     await checkAccessibility()
   })
+  it('keeps the insights page accessible', async () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
+    await checkAccessibility()
+  })
   it('keeps the import dialog accessible', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'IMPORT LEADS' }))

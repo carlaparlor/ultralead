@@ -14,6 +14,7 @@ src/
     import.ts             Paste parsing, exclusions and age-review rules
     dates.ts              Local dates and ID birth-date inference
     queue.ts              Readiness, indexed lookups and deterministic cycling
+    analytics.ts          Windowed performance, funnel and package/ATT analysis
     workspace.ts          Immutable business operations and state transitions
     storage.ts            Validation and local storage repository boundary
     clipboard.ts          Clipboard API and fallback
@@ -49,6 +50,12 @@ Age calculations use the `YYMMDD` portion of a 13-digit ID, the local date and a
 4. Sorts remaining leads by attempts today, then a stable FNV-1a hash of workspace seed, local day and account number. Thus fresh leads precede retries and source order is not followed.
 
 A callback's no-answer outcome updates its due time to two hours later. The queue's clock refreshes every 30 seconds and at each advance. Timing overrides are explicit and cannot bypass safety exclusions. This algorithm is local: no shared lock, central call log, or knowledge of other agents exists.
+
+## Analysis
+
+`analyse(workspace, range, now)` is a pure function over the same records the rest of the app writes: call attempts in customer profiles, sale timestamps and activation types. It never stores derived values, so totals cannot drift from the underlying records. Windows are rolling and local-day based (`today`, last 7 days, last 30 days, all time). Each window also computes the immediately preceding window of equal length for the trend notes.
+
+The funnel counts sales **recorded in the window** by their current stage, and the activation rate is calculated over decided sales (activated or declined) so open vetting does not depress it. The ATT/non-ATT split and package ranking count activations **in the window** by `activatedAt`. Attempts, sales and activations in the future are ignored; a customer's history is counted from their profile, so notes and outcomes deleted through the customer-history clear action also disappear from insights.
 
 ## Persistence and extension
 

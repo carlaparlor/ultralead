@@ -79,7 +79,7 @@ export interface Workspace {
 }
 
 export type ClearCategory = 'leads' | 'callbacks' | 'pipeline' | 'activations' | 'history'
-export type View = 'overview' | 'leads' | 'callbacks' | 'pipeline' | 'activations' | 'settings'
+export type View = 'overview' | 'leads' | 'callbacks' | 'pipeline' | 'activations' | 'insights' | 'settings'
 
 export function makeId(): string {
   return typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
