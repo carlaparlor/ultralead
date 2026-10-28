@@ -1,0 +1,91 @@
+import { describe, expect, it } from 'vitest'
+import { getSmartQueue, readiness, RETRY_DELAY_MS } from './queue'
+import { pruneExcluded, recordNoAnswer, recordNotInterested, resetToQueue, saveCallback, verifyAge } from './workspace'
+import { makeLead, NOW, workspaceWith } from './testFixtures'
+
+describe('smart cycling', () => {
+  it('prioritises due callbacks, keeps future callbacks out, and deduplicates accounts', () => {
+    const [first, second, third] = ['5-1', '5-2', '5-3'].map(number => makeLead(number))
+    let ws = workspaceWith(first, second, third)
+    ws = saveCallback(ws, second, new Date(NOW.getTime() - 3600000).toISOString(), '', NOW)
+    ws = saveCallback(ws, third, new Date(NOW.getTime() + 3600000).toISOString(), '', NOW)
+    const queue = getSmartQueue(ws, NOW)
+    expect(queue.map(item => item.lead.accountNumber)).toEqual(['5-2', '5-1'])
+    expect(queue[0].callback?.lead.accountNumber).toBe('5-2')
+    expect(readiness(ws, third, NOW)).toBe('callback_scheduled')
+  })
+  it('keeps callback snapshots callable after the daily lead list is replaced', () => {
+    const lead = makeLead('5-1')
+    let ws = saveCallback(workspaceWith(lead), lead, new Date(NOW.getTime() - 1).toISOString(), '', NOW)
+    ws = { ...ws, leads: [] }
+    expect(getSmartQueue(ws, NOW)[0].lead.accountNumber).toBe('5-1')
+  })
+  it('uses a stable daily, per-workspace shuffle rather than source order', () => {
+    const leads = Array.from({ length: 25 }, (_, i) => makeLead(`5-${i + 1}`))
+    const ws = workspaceWith(...leads)
+    const order = (input: typeof ws, time = NOW) => getSmartQueue(input, time).map(item => item.lead.accountNumber)
+    expect(order(ws)).toEqual(order(ws))
+    expect(order(ws)).not.toEqual(leads.map(lead => lead.accountNumber))
+    expect(order(ws)).not.toEqual(order({ ...ws, deviceSeed: 'another-device' }))
+    expect(order(ws)).not.toEqual(order(ws, new Date(2026, 9, 29, 10)))
+  })
+  it('spaces no-answer retries by two hours and stops after three per local day', () => {
+    const lead = makeLead('5-1')
+    let ws = workspaceWith(lead)
+    ws = recordNoAnswer(ws, lead, NOW)
+    expect(readiness(ws, lead, new Date(NOW.getTime() + RETRY_DELAY_MS - 1))).toBe('cooldown')
+    expect(readiness(ws, lead, new Date(NOW.getTime() + RETRY_DELAY_MS))).toBe('ready')
+    ws = recordNoAnswer(ws, lead, new Date(NOW.getTime() + RETRY_DELAY_MS))
+    ws = recordNoAnswer(ws, lead, new Date(NOW.getTime() + 2 * RETRY_DELAY_MS))
+    expect(readiness(ws, lead, new Date(NOW.getTime() + 3 * RETRY_DELAY_MS))).toBe('daily_limit')
+    expect(readiness(ws, lead, new Date(2026, 9, 29, 10))).toBe('ready')
+  })
+  it('moves a no-answer callback two hours forward and applies the daily limit', () => {
+    const lead = makeLead('5-1')
+    let ws = saveCallback(workspaceWith(lead), lead, new Date(NOW.getTime() - 1).toISOString(), 'Keep this', NOW)
+    ws = recordNoAnswer(ws, lead, NOW)
+    expect(ws.callbacks[0].dueAt).toBe(new Date(NOW.getTime() + RETRY_DELAY_MS).toISOString())
+    expect(ws.callbacks[0].note).toBe('Keep this')
+    expect(readiness(ws, lead, NOW)).toBe('callback_scheduled')
+  })
+  it('gives fresh leads priority over retries after the cooldown', () => {
+    const retry = makeLead('5-1'), fresh = makeLead('5-2')
+    const ws = recordNoAnswer(workspaceWith(retry, fresh), retry, NOW)
+    expect(getSmartQueue(ws, new Date(NOW.getTime() + RETRY_DELAY_MS)).map(item => item.lead.accountNumber)).toEqual(['5-2', '5-1'])
+  })
+  it('keeps not-interested customers out until explicitly reset, without erasing history', () => {
+    const lead = makeLead('5-1')
+    let ws = recordNotInterested(workspaceWith(lead), lead, NOW)
+    expect(getSmartQueue(ws, NOW)).toEqual([])
+    ws = resetToQueue(ws, lead.accountNumber, new Date(NOW.getTime() + 1))
+    expect(readiness(ws, lead, new Date(NOW.getTime() + 2))).toBe('ready')
+    expect(ws.profiles['5-1'].attempts).toHaveLength(1)
+  })
+  it('counts a new attempt even if it shares the reset millisecond', () => {
+    const lead = makeLead('5-1')
+    let ws = recordNotInterested(workspaceWith(lead), lead, NOW)
+    ws = resetToQueue(ws, lead.accountNumber, NOW)
+    expect(readiness(ws, lead, NOW)).toBe('ready')
+    ws = recordNoAnswer(ws, lead, NOW)
+    expect(readiness(ws, lead, NOW)).toBe('cooldown')
+  })
+  it('does not call an unknown age until explicitly verified', () => {
+    const lead = makeLead('5-1', { customerId: '' })
+    let ws = workspaceWith(lead)
+    expect(readiness(ws, lead, NOW)).toBe('age_review')
+    expect(getSmartQueue(ws, NOW)).toHaveLength(0)
+    ws = verifyAge(ws, lead.accountNumber)
+    expect(getSmartQueue(ws, NOW)).toHaveLength(1)
+  })
+  it('removes customers when they turn 60, while retaining notes and sales history', () => {
+    const lead = makeLead('5-1', { customerId: '6610290000000' })
+    let ws = saveCallback(workspaceWith(lead), lead, NOW.toISOString(), '', NOW)
+    expect(getSmartQueue(ws, NOW)).toHaveLength(1)
+    const nextDay = new Date(2026, 9, 29, 10)
+    expect(getSmartQueue(ws, nextDay)).toHaveLength(0)
+    ws = pruneExcluded(ws, nextDay)
+    expect(ws.leads).toHaveLength(0)
+    expect(ws.callbacks).toHaveLength(0)
+    expect(ws.profiles['5-1'].excludedReason).toBe('age_60_plus')
+  })
+})
