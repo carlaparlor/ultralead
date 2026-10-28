@@ -1,8 +1,8 @@
-/** The ultralead+ mark: a light tile with an optically centred plus. */
+/** The ultralead mark: a light tile with a centred U. */
 export function BrandMark() {
   return <span className="brand-mark" aria-hidden="true">
     <svg viewBox="0 0 32 32" fill="none" focusable="false">
-      <path d="M16 6.5v19M6.5 16h19" stroke="currentColor" strokeWidth="3.4" />
+      <path d="M8.5 8v8.5a7.5 7.5 0 0 0 15 0V8" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" />
     </svg>
   </span>
 }
