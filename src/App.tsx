@@ -8,7 +8,7 @@ import { PipelineView } from './components/PipelineView'
 import { ActivationsView } from './components/ActivationsView'
 import { SettingsView } from './components/SettingsView'
 import { ImportModal } from './components/ImportModal'
-import { CallbackModal, HelpModal, SaleModal } from './components/OutcomeModals'
+import { ActivationModal, CallbackModal, HelpModal, SaleModal } from './components/OutcomeModals'
 import { Modal } from './components/ui'
 import { copyText } from './domain/clipboard'
 import { localDayKey } from './domain/dates'
@@ -23,6 +23,7 @@ type ModalState =
   | { type: 'import' }
   | { type: 'callback'; lead: Lead; existing?: Callback; recordCall: boolean }
   | { type: 'sale'; lead: Lead; sale?: Sale }
+  | { type: 'activation'; sale: Sale }
   | { type: 'help' }
   | { type: 'confirm'; title: string; description: string; confirmLabel: string; action: () => void; danger?: boolean }
   | null
@@ -189,9 +190,9 @@ export default function App() {
   const onRemoveLead = (selected: Lead) => setModal({ type: 'confirm', title: 'Remove this lead?', description: `${selected.name} will be removed from the daily lead list. Their callbacks, sales and notes will stay.`, confirmLabel: 'REMOVE LEAD', danger: true, action: () => { setWorkspace(previous => removeLead(previous, selected.accountNumber)); notify('Lead removed from the list.') } })
   const onRemoveCallback = (item: Callback) => setModal({ type: 'confirm', title: 'Delete this callback?', description: `The callback for ${item.lead.name} will be removed. Their other records will stay and the lead may return to the queue.`, confirmLabel: 'DELETE CALLBACK', danger: true, action: () => { setWorkspace(previous => removeCallback(previous, item.id)); notify('Callback deleted.') } })
   const onRemoveSale = (sale: Sale) => setModal({ type: 'confirm', title: sale.stage === 'activated' ? 'Delete this activation?' : 'Delete this sale?', description: `Only the ${sale.stage === 'activated' ? 'activation' : 'sale'} for ${sale.lead.name} will be deleted. Customer notes and call history will stay.`, confirmLabel: 'DELETE RECORD', danger: true, action: () => { setWorkspace(previous => removeSale(previous, sale.id)); notify('Record deleted.') } })
-  const applyStage = (sale: Sale, stage: SaleStage, message: string) => {
+  const applyStage = (sale: Sale, stage: SaleStage, message: string, activationType?: 'ATT' | 'Non-ATT') => {
     const current = workspaceRef.current
-    const next = updateSaleStage(current, sale.id, stage, new Date())
+    const next = updateSaleStage(current, sale.id, stage, new Date(), stage === 'activated' ? activationType : undefined)
     if (next === current) { notify('Sale could not be moved; it may have changed in another tab or already have an open sale.'); return }
     setWorkspace(next)
     notify(message)
@@ -202,7 +203,8 @@ export default function App() {
       return
     }
     if (stage === 'activated') {
-      setModal({ type: 'confirm', title: 'Confirmation complete?', description: `Confirm that ${sale.lead.name}'s ${sale.activationType} sale is complete. It will be counted as an activation.`, confirmLabel: 'COMPLETE ACTIVATION', action: () => applyStage(sale, stage, 'Activation completed.') })
+      // The ATT/non-ATT split is decided here, when the activation is real — never at sale entry.
+      setModal({ type: 'activation', sale })
       return
     }
     applyStage(sale, stage, stage === 'pending_confirmation' ? 'Moved to awaiting confirmation.' : 'Moved to credit vetting.')
@@ -248,7 +250,8 @@ export default function App() {
     {toast && <div className="toast" role="status"><span className="tiny-dot" />{toast}{undoImport && <button className="toast-action" onClick={undoImport}>UNDO</button>}<button onClick={() => { setToast(''); setUndoImport(null) }} aria-label="Dismiss notification"><X size={14} /></button></div>}
     {modal?.type === 'import' && <ImportModal now={now} isDemo={workspace.isDemo} text={importText} onText={setImportText} mode={importMode} onMode={rememberImportMode} onClose={() => setModal(null)} onImport={onImport} />}
     {modal?.type === 'callback' && <CallbackModal key={`${modal.lead.accountNumber}-${modal.existing?.id ?? 'new'}`} lead={modal.lead} existing={modal.existing} now={now} onClose={() => setModal(null)} onSave={(dueAt, note) => { const next = saveCallback(workspace, modal.lead, dueAt, note, new Date(), modal.recordCall); setModal(null); if (modal.recordCall) advanceAfter(next, 'Callback scheduled.'); else { setWorkspace(next); notify('Callback updated.') } }} />}
-    {modal?.type === 'sale' && <SaleModal key={modal.sale?.id ?? modal.lead.accountNumber} lead={modal.lead} sale={modal.sale} workspace={workspace} onClose={() => setModal(null)} onSave={(packageName, type) => { if (modal.sale) { setWorkspace(previous => editSale(previous, modal.sale!.id, packageName, type, new Date())); notify('Sale details updated.') } else { const next = recordSale(workspace, modal.lead, packageName, type, new Date()); if (next === workspace) notify('Sale not recorded. This account already has an open or completed sale.'); else advanceAfter(next, 'Sale sent to credit vetting.') } setModal(null) }} />}
+    {modal?.type === 'sale' && <SaleModal key={modal.sale?.id ?? modal.lead.accountNumber} lead={modal.lead} sale={modal.sale} workspace={workspace} onClose={() => setModal(null)} onSave={(packageName, type) => { if (modal.sale) { setWorkspace(previous => editSale(previous, modal.sale!.id, packageName, type, new Date())); notify('Sale details updated.') } else { const next = recordSale(workspace, modal.lead, packageName, new Date()); if (next === workspace) notify('Sale not recorded. This account already has an open or completed sale.'); else advanceAfter(next, 'Sale sent to credit vetting.') } setModal(null) }} />}
+    {modal?.type === 'activation' && <ActivationModal key={modal.sale.id} sale={modal.sale} onClose={() => setModal(null)} onSave={type => { applyStage(modal.sale, 'activated', `Activation completed as ${type === 'ATT' ? 'ATT' : 'non-ATT'}.`, type); setModal(null) }} />}
     {modal?.type === 'help' && <HelpModal onClose={() => setModal(null)} />}
     {modal?.type === 'confirm' && <Modal title={modal.title} eyebrow="PLEASE CONFIRM" onClose={() => setModal(null)}><div className="modal-body"><p className="modal-intro confirm-description">{modal.description}</p><div className="modal-footer"><button className="button button-outline" onClick={() => setModal(null)}>CANCEL</button><button className={`button ${modal.danger ? 'button-danger' : 'button-primary'}`} onClick={() => { const action = modal.action; setModal(null); action() }}>{modal.confirmLabel} <ArrowRight size={15} /></button></div></div></Modal>}
   </div>

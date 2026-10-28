@@ -6,41 +6,50 @@ describe('sales lifecycle', () => {
   it('requires a package and goes from sale through vetting and confirmation to activation', () => {
     const lead = makeLead('5-1')
     let ws = workspaceWith(lead)
-    expect(recordSale(ws, lead, ' ', 'ATT', NOW)).toBe(ws)
-    ws = recordSale(ws, lead, ' New deal ', 'Non-ATT', NOW)
+    expect(recordSale(ws, lead, ' ', NOW)).toBe(ws)
+    ws = recordSale(ws, lead, ' New deal ', NOW)
     const id = ws.sales[0].id
-    expect(ws.sales[0]).toMatchObject({ stage: 'credit_vetting', packageName: 'New deal', activationType: 'Non-ATT', activatedAt: null })
+    // ATT vs non-ATT is unknown until the activation happens.
+    expect(ws.sales[0]).toMatchObject({ stage: 'credit_vetting', packageName: 'New deal', activationType: null, activatedAt: null })
     expect(ws.packages).toEqual(['New deal'])
-    expect(updateSaleStage(ws, id, 'activated', NOW)).toBe(ws) // can't bypass confirmation
+    expect(updateSaleStage(ws, id, 'activated', NOW, 'ATT')).toBe(ws) // can't bypass confirmation
     ws = updateSaleStage(ws, id, 'pending_confirmation', NOW)
     expect(ws.sales[0].stage).toBe('pending_confirmation')
-    ws = updateSaleStage(ws, id, 'activated', NOW)
-    expect(ws.sales[0]).toMatchObject({ stage: 'activated', activatedAt: NOW.toISOString() })
+    expect(ws.sales[0].activationType).toBeNull()
+    // An activation cannot be completed without recording its type.
+    expect(updateSaleStage(ws, id, 'activated', NOW)).toBe(ws)
+    expect(updateSaleStage(ws, id, 'activated', NOW, 'Non-ATT')).not.toBe(ws)
+    ws = updateSaleStage(ws, id, 'activated', NOW, 'Non-ATT')
+    expect(ws.sales[0]).toMatchObject({ stage: 'activated', activationType: 'Non-ATT', activatedAt: NOW.toISOString() })
     ws = updateSaleStage(ws, id, 'pending_confirmation', NOW)
     expect(ws.sales[0].activatedAt).toBeNull()
   })
   it('prevents double-counting an existing non-declined sale', () => {
     const lead = makeLead('5-1')
-    const ws = recordSale(workspaceWith(lead), lead, 'Pack', 'ATT', NOW)
-    expect(recordSale(ws, lead, 'Pack', 'ATT', NOW)).toBe(ws)
+    const ws = recordSale(workspaceWith(lead), lead, 'Pack', NOW)
+    expect(recordSale(ws, lead, 'Pack', NOW)).toBe(ws)
   })
   it('supports decline, reopening, and changing package and type', () => {
     const lead = makeLead('5-1')
-    let ws = recordSale(workspaceWith(lead), lead, 'Old', 'ATT', NOW)
+    let ws = recordSale(workspaceWith(lead), lead, 'Old', NOW)
     const id = ws.sales[0].id
     ws = updateSaleStage(ws, id, 'declined', NOW)
     expect(ws.sales[0].stage).toBe('declined')
     ws = updateSaleStage(ws, id, 'credit_vetting', NOW)
+    // A type cannot be attached to a sale that has not activated.
+    ws = editSale(ws, id, 'New', 'Non-ATT', NOW)
+    expect(ws.sales[0]).toMatchObject({ packageName: 'New', activationType: null })
+    expect(ws.packages).toEqual(['Old', 'New'])
+    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', NOW), id, 'activated', NOW, 'ATT')
     ws = editSale(ws, id, 'New', 'Non-ATT', NOW)
     expect(ws.sales[0]).toMatchObject({ packageName: 'New', activationType: 'Non-ATT' })
-    expect(ws.packages).toEqual(['Old', 'New'])
   })
   it('does not reopen a declined sale if a newer sale is already active', () => {
     const lead = makeLead('5-1')
-    let ws = recordSale(workspaceWith(lead), lead, 'Old', 'ATT', NOW)
+    let ws = recordSale(workspaceWith(lead), lead, 'Old', NOW)
     const oldId = ws.sales[0].id
     ws = updateSaleStage(ws, oldId, 'declined', NOW)
-    ws = recordSale(ws, lead, 'New', 'ATT', NOW)
+    ws = recordSale(ws, lead, 'New', NOW)
     expect(updateSaleStage(ws, oldId, 'credit_vetting', NOW)).toBe(ws)
   })
 })
@@ -51,7 +60,7 @@ describe('selective data management', () => {
     let ws = workspaceWith(a, b)
     ws = saveNotes(ws, a.accountNumber, 'Keep')
     ws = saveCallback(ws, a, NOW.toISOString(), 'Note', NOW)
-    ws = recordSale(ws, b, 'Pack', 'ATT', NOW)
+    ws = recordSale(ws, b, 'Pack', NOW)
     const cbId = ws.callbacks[0].id, saleId = ws.sales[0].id
     let next = removeLead(ws, a.accountNumber)
     expect(next.callbacks).toHaveLength(1)
@@ -65,11 +74,11 @@ describe('selective data management', () => {
   })
   it('clears pipeline and activations independently', () => {
     const a = makeLead('5-1'), b = makeLead('5-2')
-    let ws = recordSale(workspaceWith(a, b), a, 'A', 'ATT', NOW)
+    let ws = recordSale(workspaceWith(a, b), a, 'A', NOW)
     const aId = ws.sales[0].id
     ws = updateSaleStage(ws, aId, 'pending_confirmation', NOW)
-    ws = updateSaleStage(ws, aId, 'activated', NOW)
-    ws = recordSale(ws, b, 'B', 'Non-ATT', NOW)
+    ws = updateSaleStage(ws, aId, 'activated', NOW, 'ATT')
+    ws = recordSale(ws, b, 'B', NOW)
     expect(clearCategory(ws, 'pipeline').sales.map(item => item.stage)).toEqual(['activated'])
     expect(clearCategory(ws, 'activations').sales.map(item => item.stage)).toEqual(['credit_vetting'])
     expect(clearCategory(ws, 'leads').sales).toHaveLength(2)
@@ -91,7 +100,7 @@ describe('selective data management', () => {
     expect(ws.callbacks[0].note).toBe('Two')
     expect(ws.profiles['5-1'].attempts).toHaveLength(1)
     expect(recordNotInterested(ws, lead, NOW).callbacks).toHaveLength(0)
-    expect(recordSale(ws, lead, 'Pack', 'ATT', NOW).callbacks).toHaveLength(0)
+    expect(recordSale(ws, lead, 'Pack', NOW).callbacks).toHaveLength(0)
     expect(recordNoAnswer(ws, lead, NOW).callbacks).toHaveLength(1)
   })
 })

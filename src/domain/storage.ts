@@ -34,7 +34,9 @@ export function isWorkspace(value: unknown): value is Workspace {
   if (!value.callbacks.every(item => isObject(item) && isString(item.id) && isLead(item.lead) && isDate(item.dueAt) && isDate(item.createdAt) && isString(item.note))
     || !hasUnique(value.callbacks, item => (item.lead as Record<string, unknown>).accountNumber)) return false
   if (!value.sales.every(item => isObject(item) && isString(item.id) && isLead(item.lead) && isString(item.packageName) && !!item.packageName.trim()
-    && ['ATT', 'Non-ATT'].includes(String(item.activationType)) && ['credit_vetting', 'pending_confirmation', 'activated', 'declined'].includes(String(item.stage))
+    && (item.activationType === null || ['ATT', 'Non-ATT'].includes(String(item.activationType)))
+    && (item.stage !== 'activated' || item.activationType !== null)
+    && ['credit_vetting', 'pending_confirmation', 'activated', 'declined'].includes(String(item.stage))
     && isDate(item.createdAt) && isDate(item.updatedAt) && isNullableDate(item.activatedAt)
     && (item.stage !== 'activated' || isDate(item.activatedAt))) || !hasUnique(value.sales, item => item.id)) return false
   if (!value.activity.every(item => isObject(item) && isString(item.id) && isDate(item.at) && isString(item.accountNumber) && isString(item.name) && isString(item.description))) return false

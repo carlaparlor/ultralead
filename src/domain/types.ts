@@ -43,7 +43,11 @@ export interface Sale {
   id: string
   lead: Lead
   packageName: string
-  activationType: ActivationType
+  /**
+   * Only known once the sale has actually activated. It stays null through credit
+   * vetting and confirmation, because the ATT/non-ATT split is a result, not a guess.
+   */
+  activationType: ActivationType | null
   stage: SaleStage
   createdAt: string
   updatedAt: string

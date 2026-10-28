@@ -355,6 +355,10 @@ tbody tr:hover { background: #2d312d; }
 .sale-details span, .sale-details strong { display: block; }
 .sale-details span { color: #929f8f; font-size: 9px; font-weight: 700; }
 .sale-details strong { color: #e0e8dd; font-size: 11px; margin-top: 7px; overflow-wrap: anywhere; }
+.sale-details strong.type-pending { color: #9aa695; font-weight: 400; font-size: 9px; letter-spacing: .04em; }
+.type-later-note { display: flex; gap: 9px; align-items: flex-start; margin-top: 20px; padding: 12px; border: 1px solid #4e5a4b; background: #2f362e; color: #c3d0be; font-size: 10px; line-height: 1.6; }
+.type-later-note svg { flex: 0 0 auto; margin-top: 1px; color: #b9d1b0; }
+.type-later-note strong { color: #e8f2e3; }
 .sale-card-date { color: #a4b2a1; font-size: 9px; }
 .sale-card-actions { display: flex; align-items: center; gap: 4px; margin-top: 14px; }
 .sale-stage-button { flex: 1; min-height: 34px; display: flex; align-items: center; justify-content: space-between; gap: 6px; border: 1px solid #697965; background: #404b3e; color: #d8e6d4; font-size: 9px; font-weight: 700; padding: 0 9px; }
