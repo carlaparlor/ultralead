@@ -101,9 +101,11 @@ A retained callback can still become callable even if its lead has been removed 
 
 ## Typography
 
-The interface is set in **Courier For The People** (SIL Open Font License) where it is installed, falling back to **Courier Prime** (bundled with the app, also OFL) and then the system Courier. Courier For The People is a heavier, true-italic remaster of Courier intended for screen use.
+The interface is set in **Courier For The People** (SIL Open Font License) where it is installed, falling back to **Courier Prime** and then the system Courier.
 
-To ship Courier For The People with the app instead of relying on it being installed, put its files in `public/fonts/` (web fonts are best) and uncomment the `@font-face` block at the top of `src/styles.css`. Keep the font's OFL licence alongside it.
+Courier Prime is committed to this repository in `src/fonts/` (two woff2 files, about 38 KB total) and loaded with `@font-face` in `src/styles.css`, so the app needs no extra packages and never renders in Courier New. Its OFL licence is next to the files in `src/fonts/OFL-CourierPrime.txt`.
+
+To ship Courier For The People as well, put its web font files in `src/fonts/` and uncomment the matching `@font-face` block at the top of `src/styles.css`. Keep that font's OFL licence alongside the files.
 
 ## Development and tests
 
