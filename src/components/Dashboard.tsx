@@ -86,7 +86,7 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
             <button className="outcome-callback" onClick={onCallback}><span>Callback</span><kbd>C</kbd></button>
             <button className="sale-action" onClick={onSale}><span>Made a sale</span><kbd>S</kbd></button>
           </div></div>
-        </article> : <div className="lead-card lead-empty"><EmptyState title="Your queue is clear." action={ageReview ? <button className="button button-dark" onClick={() => onNavigate('leads')}>Review {ageReview} lead{ageReview === 1 ? '' : 's'} <ArrowRight size={15} /></button> : <button className="button button-dark" onClick={onImport}>Import leads <ArrowRight size={15} /></button>}>
+        </article> : <div className="lead-card lead-empty"><EmptyState title="Your queue is clear." action={ageReview ? <button className="button button-primary" onClick={() => onNavigate('leads')}>Review {ageReview} lead{ageReview === 1 ? '' : 's'} <ArrowRight size={15} /></button> : <button className="button button-primary" onClick={onImport}>Import leads <ArrowRight size={15} /></button>}>
           {ageReview ? 'Some leads need an age check before they can be called.' : workspace.leads.length || workspace.callbacks.length ? 'There are no leads ready right now. Callbacks and spaced retries will appear here when due.' : 'Paste your lead list to build a smarter calling queue.'}
         </EmptyState></div>}
         <div className="desk-footer"><label><span>AUTO-COPY NEXT ACCOUNT</span><Toggle checked={workspace.settings.autoCopy} onChange={onAutoCopy} label="Auto-copy next account" /></label><span className="desk-hint">← → ARROW KEYS CYCLE · ⌘/CTRL V TO IMPORT ANYWHERE</span></div>
