@@ -39,8 +39,8 @@ export function createDemoWorkspace(now = new Date()): Workspace {
     updatedAt: minutesAgo(minutes), activatedAt: stage === 'activated' ? minutesAgo(minutes) : null,
   })
   const sales: Sale[] = [
-    sale('demo-sale-1', leads[2], 'Everyday 20GB', 'ATT', 'credit_vetting', 34),
-    sale('demo-sale-2', leads[3], 'Unlimited Connect', 'Non-ATT', 'pending_confirmation', 72),
+    sale('demo-sale-1', leads[2], 'Everyday 20GB', null, 'credit_vetting', 34),
+    sale('demo-sale-2', leads[3], 'Unlimited Connect', null, 'pending_confirmation', 72),
     sale('demo-sale-3', historical[0], 'Everyday 20GB', 'ATT', 'activated', 95),
     sale('demo-sale-4', historical[1], 'Home Connect', 'Non-ATT', 'activated', 150),
     sale('demo-sale-5', historical[2], 'Everyday 20GB', 'ATT', 'activated', 1740),

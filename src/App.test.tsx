@@ -40,7 +40,7 @@ describe('calling workflow', () => {
     await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith('5-102'))
 
     fireEvent.change(screen.getByLabelText('CUSTOMER NOTES'), { target: { value: 'Prefers afternoons' } })
-    fireEvent.click(screen.getByRole('button', { name: /Callback 3/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Callback C/ }))
     fireEvent.change(dialog().getByLabelText(/CALLBACK NOTE/), { target: { value: 'Call after work' } })
     fireEvent.click(dialog().getByRole('button', { name: /SAVE CALLBACK/ }))
     expect(screen.getByRole('heading', { name: 'Your queue is clear.' })).toBeInTheDocument()
@@ -53,12 +53,18 @@ describe('calling workflow', () => {
     expect(screen.getByRole('heading', { name: 'Review Person' })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /Made a sale/ }))
     fireEvent.change(dialog().getByLabelText(/PACKAGE/), { target: { value: 'A changing deal' } })
-    fireEvent.click(dialog().getByLabelText(/NON-ATT/))
+    // No ATT/non-ATT choice before vetting.
+    expect(dialog().queryByLabelText(/NON-ATT/)).not.toBeInTheDocument()
+    expect(dialog().getByText(/ATT or non-ATT\?/)).toBeInTheDocument()
     fireEvent.click(dialog().getByRole('button', { name: /START CREDIT VETTING/ }))
     fireEvent.click(screen.getByRole('button', { name: /Sales pipeline/ }))
     expect(screen.getByText('A changing deal')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: /VETTING APPROVED/ }))
     fireEvent.click(screen.getByRole('button', { name: /COMPLETE ACTIVATION/ }))
+    // The type is asked for exactly here.
+    expect(dialog().getByRole('radio', { name: /^ATT/ })).toBeInTheDocument()
+    expect(dialog().getByRole('button', { name: /COMPLETE ACTIVATION/ })).toBeDisabled()
+    fireEvent.click(dialog().getByLabelText(/NON-ATT/))
     fireEvent.click(dialog().getByRole('button', { name: /COMPLETE ACTIVATION/ }))
     fireEvent.click(screen.getByRole('button', { name: /Activations/ }))
     expect(screen.getByText('A changing deal')).toBeInTheDocument()
@@ -93,18 +99,56 @@ describe('calling workflow', () => {
     expect(screen.getByRole('button', { name: 'REPLACE' })).toHaveAttribute('aria-pressed', 'false')
   })
 
-  it('copies the next account on skip and does not fire shortcuts while typing', async () => {
+  it('uses n, x, c and the arrow keys on the calling desk', async () => {
+    render(<App />)
+    importRows('Cycle One Prospect Consumer 5-921 9001010000000\nCycle Two Prospect Consumer 5-922 9001010000000')
+    const shown = () => screen.getByText(/^5-92[12]$/, { selector: '.account-box strong' }).textContent
+    const first = shown()
+    fireEvent.keyDown(window, { key: 'ArrowRight' })
+    const second = shown()
+    expect(second).not.toBe(first)
+    fireEvent.keyDown(window, { key: 'ArrowLeft' })
+    expect(shown()).toBe(first)
+    // c opens the callback dialog
+    fireEvent.keyDown(window, { key: 'c' })
+    expect(dialog().getByLabelText(/CALLBACK NOTE/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: /CANCEL/ }))
+    // n logs a no answer for the current lead; x marks not interested
+    fireEvent.keyDown(window, { key: 'n' })
+    fireEvent.keyDown(window, { key: 'x' })
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!)
+    const outcomes = Object.values(saved.profiles as Record<string, { attempts: { outcome: string }[]; doNotCall: boolean }>)
+      .flatMap(profile => profile.attempts.map(attempt => attempt.outcome))
+    expect(outcomes).toEqual(expect.arrayContaining(['no_answer', 'not_interested']))
+  })
+
+  it('shows no activation type for sales still in vetting or confirmation', () => {
+    const now = new Date()
+    const a = makeLead('5-861', { name: 'Vetting Person' }), b = makeLead('5-862', { name: 'Confirming Person' })
+    let ws = { ...createEmptyWorkspace(now), leads: [a, b] }
+    ws = recordSale(ws, a, 'Vetting Deal', now)
+    ws = recordSale(ws, b, 'Confirm Deal', now)
+    const id = ws.sales.find(sale => sale.packageName === 'Confirm Deal')!.id
+    ws = updateSaleStage(ws, id, 'pending_confirmation', now)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /Sales pipeline/ }))
+    expect(screen.getAllByText('AT ACTIVATION')).toHaveLength(2)
+    expect(screen.queryByText('ATT', { selector: '.sale-details strong' })).not.toBeInTheDocument()
+  })
+
+  it('cycles with the arrows and does not fire shortcuts while typing', async () => {
     render(<App />)
     importRows('Person One Prospect Consumer 5-201 9001010000000\nPerson Two Prospect Consumer 5-202 9001010000000')
     const initial = screen.getByText(/^5-20[12]$/, { selector: '.account-box strong' }).textContent
     clipboard.writeText.mockClear()
-    fireEvent.keyDown(screen.getByLabelText('CUSTOMER NOTES'), { key: '1' })
+    fireEvent.keyDown(screen.getByLabelText('CUSTOMER NOTES'), { key: 'n' })
     expect(screen.getByText(/^5-20[12]$/, { selector: '.account-box strong' })).toHaveTextContent(initial!)
     fireEvent.click(screen.getByRole('button', { name: /SKIP LEAD/ }))
     const next = screen.getByText(/^5-20[12]$/, { selector: '.account-box strong' }).textContent
     expect(next).not.toBe(initial)
     await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith(next))
-    fireEvent.keyDown(window, { key: '2' })
+    fireEvent.keyDown(window, { key: 'x' })
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!)
     expect(saved.profiles[next!].doNotCall).toBe(true)
   })
@@ -115,10 +159,10 @@ describe('calling workflow', () => {
     let ws = { ...createEmptyWorkspace(now), leads: [a, b] }
     ws = saveNotes(ws, a.accountNumber, 'Keep my note')
     ws = saveCallback(ws, a, new Date(now.getTime() + 3600000).toISOString(), 'Keep until cleared', now)
-    ws = recordSale(ws, b, 'Some package', 'ATT', now)
+    ws = recordSale(ws, b, 'Some package', now)
     const id = ws.sales[0].id
     ws = updateSaleStage(ws, id, 'pending_confirmation', now)
-    ws = updateSaleStage(ws, id, 'activated', now)
+    ws = updateSaleStage(ws, id, 'activated', now, 'ATT')
     localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: /Data & settings/ }))
@@ -136,7 +180,7 @@ describe('calling workflow', () => {
   it('can return a lead to the queue after its sale record is deleted without erasing history', () => {
     const now = new Date()
     const lead = makeLead('5-499', { name: 'Deleted Sale Person' })
-    let ws = recordSale({ ...createEmptyWorkspace(now), leads: [lead] }, lead, 'Deal', 'ATT', now)
+    let ws = recordSale({ ...createEmptyWorkspace(now), leads: [lead] }, lead, 'Deal', now)
     ws = { ...ws, sales: [] }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
     render(<App />)
@@ -155,9 +199,9 @@ describe('calling workflow', () => {
     let ws = { ...createEmptyWorkspace(now), leads: [a, b] }
     ws = saveNotes(ws, a.accountNumber, 'Keep note')
     ws = saveCallback(ws, a, new Date(now.getTime() + 3600000).toISOString(), '', now)
-    ws = recordSale(ws, b, 'Deal', 'ATT', now)
+    ws = recordSale(ws, b, 'Deal', now)
     const id = ws.sales[0].id
-    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', now), id, 'activated', now)
+    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', now), id, 'activated', now, 'ATT')
     localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: /Callbacks/ }))
@@ -213,12 +257,12 @@ describe('calling workflow', () => {
     const lastYear = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate(), 10)
     const a = makeLead('5-801', { name: 'Today Person' }), b = makeLead('5-802', { name: 'Old Person' })
     let ws = { ...createEmptyWorkspace(now), leads: [a, b] }
-    ws = recordSale(ws, a, 'Current', 'ATT', now)
+    ws = recordSale(ws, a, 'Current', now)
     let id = ws.sales[0].id
-    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', now), id, 'activated', now)
-    ws = recordSale(ws, b, 'Previous', 'Non-ATT', lastYear)
+    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', now), id, 'activated', now, 'ATT')
+    ws = recordSale(ws, b, 'Previous', lastYear)
     id = ws.sales[0].id
-    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', lastYear), id, 'activated', lastYear)
+    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', lastYear), id, 'activated', lastYear, 'Non-ATT')
     localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: /Activations/ }))

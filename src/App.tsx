@@ -8,7 +8,7 @@ import { PipelineView } from './components/PipelineView'
 import { ActivationsView } from './components/ActivationsView'
 import { SettingsView } from './components/SettingsView'
 import { ImportModal } from './components/ImportModal'
-import { CallbackModal, HelpModal, SaleModal } from './components/OutcomeModals'
+import { ActivationModal, CallbackModal, HelpModal, SaleModal } from './components/OutcomeModals'
 import { Modal } from './components/ui'
 import { copyText } from './domain/clipboard'
 import { localDayKey } from './domain/dates'
@@ -23,6 +23,7 @@ type ModalState =
   | { type: 'import' }
   | { type: 'callback'; lead: Lead; existing?: Callback; recordCall: boolean }
   | { type: 'sale'; lead: Lead; sale?: Sale }
+  | { type: 'activation'; sale: Sale }
   | { type: 'help' }
   | { type: 'confirm'; title: string; description: string; confirmLabel: string; action: () => void; danger?: boolean }
   | null
@@ -122,14 +123,16 @@ export default function App() {
     if (first && next.settings.autoCopy) copyAccount(first.accountNumber, `${message} Next account copied.`)
     else notify(message)
   }
-  const skip = () => {
-    if (!lead) return
+  /** Arrow keys and the desk arrows walk the queue without logging an outcome. */
+  const cycle = (direction: 1 | -1) => {
+    if (!lead || queue.length < 2) { notify('There are no other leads ready right now.'); return }
     const index = queue.findIndex(item => item.lead.accountNumber === lead.accountNumber)
-    const next = index < 0 ? queue[0]?.lead : queue[(index + 1) % queue.length]?.lead
+    const from = index < 0 ? 0 : index
+    const next = queue[(from + direction + queue.length) % queue.length]?.lead
     if (!next || next.accountNumber === lead.accountNumber) { notify('There are no other leads ready right now.'); return }
     setSelection({ account: next.accountNumber, manual: false })
-    if (workspace.settings.autoCopy) copyAccount(next.accountNumber, 'Skipped. Next account copied.')
-    else notify('Lead skipped for now.')
+    if (workspace.settings.autoCopy) copyAccount(next.accountNumber, direction > 0 ? 'Next lead. Account copied.' : 'Previous lead. Account copied.')
+    else notify(direction > 0 ? 'Next lead.' : 'Previous lead.')
   }
   const noAnswer = () => { if (lead) advanceAfter(recordNoAnswer(workspace, lead, new Date()), 'No answer saved.') }
   const notInterested = () => { if (lead) advanceAfter(recordNotInterested(workspace, lead, new Date()), 'Marked not interested.') }
@@ -156,13 +159,14 @@ export default function App() {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (event.altKey || event.ctrlKey || event.metaKey || target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '')) return
+      if (event.key === 'ArrowRight') { event.preventDefault(); cycle(1); return }
+      if (event.key === 'ArrowLeft') { event.preventDefault(); cycle(-1); return }
       const key = event.key.toLowerCase()
-      if (key === '1') { event.preventDefault(); noAnswer() }
-      else if (key === '2') { event.preventDefault(); notInterested() }
-      else if (key === '3') { event.preventDefault(); openCallback() }
-      else if (key === '4') { event.preventDefault(); openSale() }
-      else if (key === 'c') { event.preventDefault(); copyAccount(lead.accountNumber) }
-      else if (key === 'n') { event.preventDefault(); skip() }
+      if (key === 'n') { event.preventDefault(); noAnswer() }
+      else if (key === 'x') { event.preventDefault(); notInterested() }
+      else if (key === 'c') { event.preventDefault(); openCallback() }
+      else if (key === 's') { event.preventDefault(); openSale() }
+      else if (key === 'v') { event.preventDefault(); copyAccount(lead.accountNumber) }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -189,9 +193,9 @@ export default function App() {
   const onRemoveLead = (selected: Lead) => setModal({ type: 'confirm', title: 'Remove this lead?', description: `${selected.name} will be removed from the daily lead list. Their callbacks, sales and notes will stay.`, confirmLabel: 'REMOVE LEAD', danger: true, action: () => { setWorkspace(previous => removeLead(previous, selected.accountNumber)); notify('Lead removed from the list.') } })
   const onRemoveCallback = (item: Callback) => setModal({ type: 'confirm', title: 'Delete this callback?', description: `The callback for ${item.lead.name} will be removed. Their other records will stay and the lead may return to the queue.`, confirmLabel: 'DELETE CALLBACK', danger: true, action: () => { setWorkspace(previous => removeCallback(previous, item.id)); notify('Callback deleted.') } })
   const onRemoveSale = (sale: Sale) => setModal({ type: 'confirm', title: sale.stage === 'activated' ? 'Delete this activation?' : 'Delete this sale?', description: `Only the ${sale.stage === 'activated' ? 'activation' : 'sale'} for ${sale.lead.name} will be deleted. Customer notes and call history will stay.`, confirmLabel: 'DELETE RECORD', danger: true, action: () => { setWorkspace(previous => removeSale(previous, sale.id)); notify('Record deleted.') } })
-  const applyStage = (sale: Sale, stage: SaleStage, message: string) => {
+  const applyStage = (sale: Sale, stage: SaleStage, message: string, activationType?: 'ATT' | 'Non-ATT') => {
     const current = workspaceRef.current
-    const next = updateSaleStage(current, sale.id, stage, new Date())
+    const next = updateSaleStage(current, sale.id, stage, new Date(), stage === 'activated' ? activationType : undefined)
     if (next === current) { notify('Sale could not be moved; it may have changed in another tab or already have an open sale.'); return }
     setWorkspace(next)
     notify(message)
@@ -202,7 +206,8 @@ export default function App() {
       return
     }
     if (stage === 'activated') {
-      setModal({ type: 'confirm', title: 'Confirmation complete?', description: `Confirm that ${sale.lead.name}'s ${sale.activationType} sale is complete. It will be counted as an activation.`, confirmLabel: 'COMPLETE ACTIVATION', action: () => applyStage(sale, stage, 'Activation completed.') })
+      // The ATT/non-ATT split is decided here, when the activation is real — never at sale entry.
+      setModal({ type: 'activation', sale })
       return
     }
     applyStage(sale, stage, stage === 'pending_confirmation' ? 'Moved to awaiting confirmation.' : 'Moved to credit vetting.')
@@ -235,7 +240,7 @@ export default function App() {
       {workspace.isDemo && <section className="demo-banner" aria-label="Sample workspace notice"><div><span className="demo-tag">SAMPLE DATA</span><span>You're exploring a demo workspace. Your own leads start fresh.</span></div><button onClick={startFresh}>CLEAR SAMPLE DATA <ArrowRight size={14} /></button></section>}
       {storageWarning && <div className="storage-warning" role="alert">{storageWarning}</div>}
       <main className="main-content" id="main-content">
-        {view === 'overview' && <Dashboard workspace={workspace} now={now} queue={queue} lead={lead} callback={callback} importMode={importMode} onImportMode={rememberImportMode} onQuickImport={quickImport} onCopy={() => lead && copyAccount(lead.accountNumber)} onSkip={skip} onNoAnswer={noAnswer} onNotInterested={notInterested} onCallback={openCallback} onSale={openSale} onNotes={notes => lead && setWorkspace(previous => saveNotes(previous, lead.accountNumber, notes))} onNavigate={setView} onImport={openImport} onHelp={() => setModal({ type: 'help' })} onAutoCopy={onAutoCopy} />}
+        {view === 'overview' && <Dashboard workspace={workspace} now={now} queue={queue} lead={lead} callback={callback} importMode={importMode} onImportMode={rememberImportMode} onQuickImport={quickImport} onCopy={() => lead && copyAccount(lead.accountNumber)} onCycle={cycle} onNoAnswer={noAnswer} onNotInterested={notInterested} onCallback={openCallback} onSale={openSale} onNotes={notes => lead && setWorkspace(previous => saveNotes(previous, lead.accountNumber, notes))} onNavigate={setView} onImport={openImport} onHelp={() => setModal({ type: 'help' })} onAutoCopy={onAutoCopy} />}
         {view === 'leads' && <LeadsView workspace={workspace} now={now} onImport={openImport} onCopy={selected => copyAccount(selected.accountNumber)} onCall={onCall} onVerify={onVerify} onReset={onReset} onRemove={onRemoveLead} />}
         {view === 'callbacks' && <CallbacksView workspace={workspace} now={now} onCall={onCall} onVerify={onVerify} onEdit={item => setModal({ type: 'callback', lead: findLead(workspace, item.lead.accountNumber) ?? item.lead, existing: item, recordCall: false })} onRemove={onRemoveCallback} />}
         {view === 'pipeline' && <PipelineView workspace={workspace} onStage={onStage} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onRemove={onRemoveSale} />}
@@ -248,7 +253,8 @@ export default function App() {
     {toast && <div className="toast" role="status"><span className="tiny-dot" />{toast}{undoImport && <button className="toast-action" onClick={undoImport}>UNDO</button>}<button onClick={() => { setToast(''); setUndoImport(null) }} aria-label="Dismiss notification"><X size={14} /></button></div>}
     {modal?.type === 'import' && <ImportModal now={now} isDemo={workspace.isDemo} text={importText} onText={setImportText} mode={importMode} onMode={rememberImportMode} onClose={() => setModal(null)} onImport={onImport} />}
     {modal?.type === 'callback' && <CallbackModal key={`${modal.lead.accountNumber}-${modal.existing?.id ?? 'new'}`} lead={modal.lead} existing={modal.existing} now={now} onClose={() => setModal(null)} onSave={(dueAt, note) => { const next = saveCallback(workspace, modal.lead, dueAt, note, new Date(), modal.recordCall); setModal(null); if (modal.recordCall) advanceAfter(next, 'Callback scheduled.'); else { setWorkspace(next); notify('Callback updated.') } }} />}
-    {modal?.type === 'sale' && <SaleModal key={modal.sale?.id ?? modal.lead.accountNumber} lead={modal.lead} sale={modal.sale} workspace={workspace} onClose={() => setModal(null)} onSave={(packageName, type) => { if (modal.sale) { setWorkspace(previous => editSale(previous, modal.sale!.id, packageName, type, new Date())); notify('Sale details updated.') } else { const next = recordSale(workspace, modal.lead, packageName, type, new Date()); if (next === workspace) notify('Sale not recorded. This account already has an open or completed sale.'); else advanceAfter(next, 'Sale sent to credit vetting.') } setModal(null) }} />}
+    {modal?.type === 'sale' && <SaleModal key={modal.sale?.id ?? modal.lead.accountNumber} lead={modal.lead} sale={modal.sale} workspace={workspace} onClose={() => setModal(null)} onSave={(packageName, type) => { if (modal.sale) { setWorkspace(previous => editSale(previous, modal.sale!.id, packageName, type, new Date())); notify('Sale details updated.') } else { const next = recordSale(workspace, modal.lead, packageName, new Date()); if (next === workspace) notify('Sale not recorded. This account already has an open or completed sale.'); else advanceAfter(next, 'Sale sent to credit vetting.') } setModal(null) }} />}
+    {modal?.type === 'activation' && <ActivationModal key={modal.sale.id} sale={modal.sale} onClose={() => setModal(null)} onSave={type => { applyStage(modal.sale, 'activated', `Activation completed as ${type === 'ATT' ? 'ATT' : 'non-ATT'}.`, type); setModal(null) }} />}
     {modal?.type === 'help' && <HelpModal onClose={() => setModal(null)} />}
     {modal?.type === 'confirm' && <Modal title={modal.title} eyebrow="PLEASE CONFIRM" onClose={() => setModal(null)}><div className="modal-body"><p className="modal-intro confirm-description">{modal.description}</p><div className="modal-footer"><button className="button button-outline" onClick={() => setModal(null)}>CANCEL</button><button className={`button ${modal.danger ? 'button-danger' : 'button-primary'}`} onClick={() => { const action = modal.action; setModal(null); action() }}>{modal.confirmLabel} <ArrowRight size={15} /></button></div></div></Modal>}
   </div>

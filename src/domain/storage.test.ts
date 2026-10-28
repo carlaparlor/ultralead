@@ -18,6 +18,11 @@ describe('storage and backups', () => {
     expect(parseBackup(JSON.stringify({ ...ws, version: 99 }))).toBeNull()
     expect(isWorkspace({ ...ws, leads: [...ws.leads, ws.leads[0]] })).toBe(false)
     expect(isWorkspace({ ...ws, sales: [{ ...ws.sales[0], activationType: 'other' }] })).toBe(false)
+    // A completed activation must carry its type; an unactivated sale must not invent one.
+    const activated = ws.sales.find(sale => sale.stage === 'activated')!
+    expect(isWorkspace({ ...ws, sales: [{ ...activated, activationType: null }] })).toBe(false)
+    const pending = ws.sales.find(sale => sale.stage !== 'activated')!
+    expect(isWorkspace({ ...ws, sales: [{ ...pending, activationType: null }] })).toBe(true)
   })
   it('preserves unreadable storage in a recovery key instead of silently overwriting it', () => {
     localStorage.setItem(STORAGE_KEY, '{corrupt')
