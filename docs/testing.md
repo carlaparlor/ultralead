@@ -18,7 +18,7 @@ The Vitest suite covers:
 - Per-workspace daily shuffling, due callbacks, cooldowns, three-attempt limits, fresh-lead priority, not-interested persistence, manual reset and expiry at age 60.
 - Callback upserts, sale stage transitions and duplicate protection, editable package/type, selective per-record and per-category deletion.
 - Local persistence, same-origin tab updates, backup validation, corrupt/unavailable storage and clipboard fallback/failure.
-- React workflows from import through age review, callback, sale, vetting, confirmation and activation; notes surviving list replacement; shortcuts; pagination; date filters; and the callback-due/clipboard timing boundary.
+- React workflows from import through age review, callback, sale, vetting, confirmation and activation; paste-anywhere import with undo; remembered replace/add choice; notes surviving list replacement; shortcuts; pagination; date filters; and the callback-due/clipboard timing boundary.
 - Axe accessibility smoke checks for the calling desk and import dialog. The jsdom checks exclude colour contrast because jsdom has no layout; check contrast in a real browser too.
 
 The production build also type-checks the application and tests. Tests use invented customer details and do not access an external calling system.
@@ -27,7 +27,7 @@ A real Chromium smoke pass was also used to check desktop/mobile layouts, backup
 
 ## Manual acceptance checklist
 
-1. Start the app in a fresh browser profile. Confirm **SAMPLE DATA** is visible and importing your own rows removes the sample records.
+1. Start the app in a fresh browser profile. Confirm **SAMPLE DATA** is visible and importing your own rows removes the sample records. Paste rows with nothing focused and confirm the list imports immediately, then use **UNDO** and confirm the previous workspace returns. Paste into the customer-notes field and confirm the note receives the text instead of an import.
 2. Paste a mix of Prospect, Active, Archived, known 60+ and invalid/missing-ID rows. Check preview counts. Confirm only eligible rows enter the queue and that unknown ages require explicit review.
 3. Copy a 5- number; paste it into a safe text field. Turn auto-copy off and on, then skip and log an outcome to check clipboard behaviour. Try a browser that denies clipboard permission and check that failure is visible.
 4. Add a note, schedule a callback, replace the daily list and reload. Confirm both the callback and note survive. Check that a future callback stays out of the queue until due and that a no-answer callback is postponed.

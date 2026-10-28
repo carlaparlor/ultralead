@@ -46,7 +46,11 @@ export function Toggle({ checked, onChange, label }: { checked: boolean; onChang
 
 export function Initials({ name, className = '' }: { name: string; className?: string }) {
   const initials = name.split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0].toUpperCase()).join('')
-  return <span className={`initials ${className}`} aria-hidden="true">{initials || '—'}</span>
+  // Stable tone per customer so the same person keeps the same colour everywhere.
+  let hash = 0
+  for (const character of name) hash = (hash * 31 + character.charCodeAt(0)) >>> 0
+  const tone = `initials-c${hash % 6}`
+  return <span className={`initials ${tone} ${className}`} aria-hidden="true">{initials || '—'}</span>
 }
 
 export function EmptyState({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
