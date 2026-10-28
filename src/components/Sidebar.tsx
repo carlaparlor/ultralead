@@ -20,7 +20,8 @@ export function Sidebar({ view, onNavigate, workspace, mobileOpen, onClose }: { 
   return <>
     {mobileOpen && <button className="mobile-scrim" onClick={onClose} aria-label="Close navigation" />}
     <aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`} aria-label="Workspace navigation">
-      <div className="sidebar-head">
+      <div className="brand">
+        <div className="brand-wordmark"><strong>ultralead<svg className="brand-plus" viewBox="0 0 12 12" fill="none" aria-hidden="true" focusable="false"><path d="M6 1.1v9.8M1.1 6h9.8" stroke="currentColor" strokeWidth="2" /></svg></strong></div>
         <button className="icon-button close-nav" onClick={onClose} aria-label="Close navigation"><X size={18} /></button>
       </div>
       <div className="sidebar-section-label">WORKSPACE</div>
