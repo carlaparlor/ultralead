@@ -1,34 +1,44 @@
 /* --- Type -------------------------------------------------------------------
-   Courier For The People, when the reader has it installed (it is OFL, and the
-   intended face for this app). Otherwise the bundled Courier Prime, then the
-   system Courier. To ship Courier For The People with the app, put its files in
-   public/fonts/ and uncomment the @font-face rules below.
-
+   Courier Prime is bundled with the app (SIL Open Font License, see
+   src/fonts/OFL-CourierPrime.txt), so the UI never falls back to Courier New and
+   no install step is needed. Courier For The People is used first when the reader
+   already has it installed; to ship it with the app, put its files in src/fonts/
+   and uncomment the block below.
+   --------------------------------------------------------------------------- */
 @font-face {
-  font-family: 'Courier For The People';
-  src: url('/fonts/CourierFTPeople.woff2') format('woff2'),
-       url('/fonts/CourierFTPeople.ttf') format('truetype');
+  font-family: 'Courier Prime';
+  src: url('./fonts/courier-prime-400.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
-  font-family: 'Courier For The People';
-  src: url('/fonts/CourierFTPeople-Bold.woff2') format('woff2'),
-       url('/fonts/CourierFTPeople-Bold.ttf') format('truetype');
+  font-family: 'Courier Prime';
+  src: url('./fonts/courier-prime-700.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
+
+/*
 @font-face {
   font-family: 'Courier For The People';
-  src: url('/fonts/CourierFTPeople-Italic.woff2') format('woff2'),
-       url('/fonts/CourierFTPeople-Italic.ttf') format('truetype');
+  src: url('./fonts/CourierFTPeople.woff2') format('woff2'),
+       url('./fonts/CourierFTPeople.ttf') format('truetype');
   font-weight: 400;
-  font-style: italic;
+  font-style: normal;
   font-display: swap;
 }
-   --------------------------------------------------------------------------- */
+@font-face {
+  font-family: 'Courier For The People';
+  src: url('./fonts/CourierFTPeople-Bold.woff2') format('woff2'),
+       url('./fonts/CourierFTPeople-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+*/
+
 :root {
   font-family: 'Courier For The People', 'Courier Prime', 'Courier New', Courier, monospace;
   color: #eceee8;
