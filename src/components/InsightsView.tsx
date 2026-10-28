@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, ChartNoAxesCombined, ListFilter, PhoneCall, TrendingDown, TrendingUp } from 'lucide-react'
+import { TrendingDown, TrendingUp } from 'lucide-react'
 import { analyse, change, pointsChange, RANGE_LABELS, type AnalysisRange } from '../domain/analytics'
 import { formatDate } from '../domain/dates'
 import type { Workspace } from '../domain/types'
@@ -32,13 +32,13 @@ export function InsightsView({ workspace, now }: { workspace: Workspace; now: Da
   const bestPackage = analysis.packages[0]
 
   return <>
-    <div className="page-heading view-heading"><div><div className="eyebrow"><span className="eyebrow-line" /> WORKSPACE <span className="slash">/</span> INSIGHTS</div><h1>How you're doing<span className="heading-period">.</span></h1><p>Your own numbers, computed on this device.</p></div><div className="heading-aside"><span>PERIOD</span><strong>{RANGE_LABELS[range]}{analysis.from ? ` · from ${formatDate(analysis.from, { day: 'numeric', month: 'short' })}` : ''}</strong></div></div>
+    <div className="page-heading view-heading"><h1>Insights</h1><span className="heading-note">{analysis.from ? `from ${formatDate(analysis.from, { day: 'numeric', month: 'short' })}` : 'all time'}</span></div>
 
     <div className="range-switch" role="group" aria-label="Analysis period">
       {(Object.keys(RANGE_LABELS) as AnalysisRange[]).map(key => <button key={key} className={range === key ? 'is-on' : ''} aria-pressed={range === key} onClick={() => setRange(key)}>{RANGE_LABELS[key]}</button>)}
     </div>
 
-    {!analysis.hasActivity ? <div className="table-empty"><EmptyState title="Nothing to analyse yet." action={<span className="insights-hint"><ListFilter size={14} /> Log a few calls and this page fills in.</span>}>Once you log calls, sales and activations, your contact rate, conversion and package mix appear here. Nothing leaves this browser.</EmptyState></div> : <>
+    {!analysis.hasActivity ? <div className="table-empty"><EmptyState title="Nothing to analyse yet.">Log a few calls and this page fills in.</EmptyState></div> : <>
       <div className="insight-stats">
         <Stat label="CALLS LOGGED" value={String(calls.attempts)} detail={`${calls.customers} customer${calls.customers === 1 ? '' : 's'}`} tone="blue"
           trend={previous && <Trend {...change(calls.attempts, previous.calls)} />} />
@@ -52,7 +52,7 @@ export function InsightsView({ workspace, now }: { workspace: Workspace; now: Da
       </div>
 
       <section className="insight-section" aria-labelledby="calls-chart-heading">
-        <div className="section-heading"><div><h2 id="calls-chart-heading">Calls and outcomes<span className="heading-period">.</span></h2><p className="section-sub">{analysis.bucketLabel} · peak {peak} call{peak === 1 ? '' : 's'} per block</p></div>
+        <div className="section-heading"><div><h2 id="calls-chart-heading">Calls and outcomes</h2><p className="section-sub">{analysis.bucketLabel} · peak {peak}</p></div>
           <div className="chart-legend"><span><i className="legend-sale" /> Sale</span><span><i className="legend-callback" /> Callback</span><span><i className="legend-not-interested" /> Not interested</span><span><i className="legend-no-answer" /> No answer</span></div>
         </div>
         <div className="chart" role="img" aria-label={`Calls logged per ${analysis.bucketLabel.toLowerCase()}: ${series.map(point => `${point.label} ${point.attempts}`).join(', ')}`}>
@@ -72,7 +72,7 @@ export function InsightsView({ workspace, now }: { workspace: Workspace; now: Da
 
       <div className="insight-columns">
         <section className="insight-section" aria-labelledby="funnel-heading">
-          <div className="section-heading"><div><h2 id="funnel-heading">Sales funnel<span className="heading-period">.</span></h2><p className="section-sub">Sales recorded in this period, by where they stand now</p></div></div>
+          <div className="section-heading"><div><h2 id="funnel-heading">Sales funnel</h2></div></div>
           <div className="funnel">
             {funnel.steps.map((step, index) => <div className="funnel-step" key={step.label}>
               <div className="funnel-meta"><span>{String(index + 1).padStart(2, '0')} {step.label}</span><strong>{step.value}</strong></div>
@@ -85,11 +85,10 @@ export function InsightsView({ workspace, now }: { workspace: Workspace; now: Da
             <div><span>DECLINED</span><strong>{funnel.declined}</strong></div>
             <div><span>STILL OPEN</span><strong>{funnel.inVetting + funnel.awaitingConfirmation}</strong></div>
           </div>
-          <p className="insight-note">Activation rate counts decided sales (activated or declined) so open vetting does not drag the number down.</p>
         </section>
 
         <section className="insight-section" aria-labelledby="mix-heading">
-          <div className="section-heading"><div><h2 id="mix-heading">ATT vs non-ATT<span className="heading-period">.</span></h2><p className="section-sub">Activations in this period · the split is recorded at activation</p></div></div>
+          <div className="section-heading"><div><h2 id="mix-heading">ATT vs non-ATT</h2></div></div>
           {activationTotal ? <>
             <div className="split-bar" role="img" aria-label={`${att.att} ATT and ${att.nonAtt} non-ATT activations`}>
               <span className="split-att" style={{ flex: att.att || 0.0001 }} />
@@ -105,11 +104,9 @@ export function InsightsView({ workspace, now }: { workspace: Workspace; now: Da
               <span className="package-numbers">{item.sales} sold · {item.activated} activated</span>
             </div>) : <div className="insight-empty">No sales recorded in this period.</div>}
           </div>
-          {bestPackage && <p className="insight-note"><ChartNoAxesCombined size={13} /> Best seller this period: <strong>{bestPackage.name}</strong> ({bestPackage.sales} sale{bestPackage.sales === 1 ? '' : 's'}).</p>}
         </section>
       </div>
 
-      <div className="insight-foot"><span><PhoneCall size={14} /> Numbers update as you log outcomes · nothing is sent anywhere.</span><button className="panel-link" onClick={() => setRange('all')}>SEE ALL TIME <ArrowRight size={14} /></button></div>
     </>}
   </>
 }

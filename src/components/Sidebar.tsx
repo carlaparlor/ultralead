@@ -22,15 +22,15 @@ export function Sidebar({ view, onNavigate, workspace, mobileOpen, onClose }: { 
     <aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`} aria-label="Workspace navigation">
       <div className="brand">
         <div className="brand-mark" aria-hidden="true"><span>+</span></div>
-        <div className="brand-wordmark"><strong>ultralead<span>+</span></strong><small>THE CALLING WORKSPACE</small></div>
+        <div className="brand-wordmark"><strong>ultralead<span>+</span></strong></div>
         <button className="icon-button close-nav" onClick={onClose} aria-label="Close navigation"><X size={18} /></button>
       </div>
-      <div className="sidebar-section-label">WORKSPACE <span>01</span></div>
+      <div className="sidebar-section-label">WORKSPACE</div>
       <nav className="side-nav" aria-label="Main navigation">
         {mainItems.map(({ id, label, icon: Icon }) => <button key={id} className={`nav-item ${view === id ? 'active' : ''}`} onClick={() => { onNavigate(id); onClose() }} aria-current={view === id ? 'page' : undefined}>
           <Icon size={17} strokeWidth={1.6} /><span>{label}</span>{counts[id] !== undefined && <small>{String(counts[id]).padStart(2, '0')}</small>}
         </button>)}
-        <div className="sidebar-section-label manage-label">MANAGE <span>02</span></div>
+        <div className="sidebar-section-label manage-label">MANAGE</div>
         <button className={`nav-item ${view === 'settings' ? 'active' : ''}`} onClick={() => { onNavigate('settings'); onClose() }} aria-current={view === 'settings' ? 'page' : undefined}>
           <Settings2 size={17} strokeWidth={1.6} /><span>Data & settings</span>
         </button>

@@ -99,6 +99,12 @@ A retained callback can still become callable even if its lead has been removed 
 - Tabs on the same browser and origin listen for each other's changes, but concurrent edits are last-write-wins. This is not a multi-user database. Keep a backup before making large changes.
 - Browser storage has finite, browser-dependent capacity. The lead table is paginated and queue lookups are indexed, but very large histories or a shared team deployment should use a more capable storage service.
 
+## Typography
+
+The interface is set in **Courier For The People** (SIL Open Font License) where it is installed, falling back to **Courier Prime** (bundled with the app, also OFL) and then the system Courier. Courier For The People is a heavier, true-italic remaster of Courier intended for screen use.
+
+To ship Courier For The People with the app instead of relying on it being installed, put its files in `public/fonts/` (web fonts are best) and uncomment the `@font-face` block at the top of `src/styles.css`. Keep the font's OFL licence alongside it.
+
 ## Development and tests
 
 ```sh
