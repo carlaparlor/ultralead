@@ -74,16 +74,18 @@ export function InsightsView({ workspace, now }: { workspace: Workspace; now: Da
         <section className="insight-section" aria-labelledby="funnel-heading">
           <div className="section-heading"><div><h2 id="funnel-heading">Sales funnel</h2></div></div>
           <div className="funnel">
-            {funnel.steps.map((step, index) => <div className="funnel-step" key={step.label}>
-              <div className="funnel-meta"><span>{String(index + 1).padStart(2, '0')} {step.label}</span><strong>{step.value}</strong></div>
-              <div className="funnel-track"><span className={`funnel-fill funnel-${index}`} style={{ width: `${Math.max(step.value ? 3 : 0, step.share * 100)}%` }} /></div>
-              <span className="funnel-share">{percent(step.share)} of recorded</span>
-            </div>)}
-          </div>
-          <div className="funnel-foot">
-            <div><span>ACTIVATION RATE</span><strong>{funnel.activated + funnel.declined ? percent(funnel.activationRate) : '—'}</strong></div>
-            <div><span>DECLINED</span><strong>{funnel.declined}</strong></div>
-            <div><span>STILL OPEN</span><strong>{funnel.inVetting + funnel.awaitingConfirmation}</strong></div>
+            <div className="funnel-body">
+              {funnel.steps.map((step, index) => <div className="funnel-step" key={step.label}>
+                <div className="funnel-meta"><span>{String(index + 1).padStart(2, '0')} {step.label}</span><strong>{step.value}</strong></div>
+                <div className="funnel-track"><span className={`funnel-fill funnel-${index}`} style={{ width: `${Math.max(step.value ? 3 : 0, step.share * 100)}%` }} /></div>
+                <span className="funnel-share">{percent(step.share)} of recorded</span>
+              </div>)}
+            </div>
+            <div className="funnel-foot">
+              <div><span>ACTIVATION RATE</span><strong>{funnel.activated + funnel.declined ? percent(funnel.activationRate) : '—'}</strong></div>
+              <div><span>DECLINED</span><strong>{funnel.declined}</strong></div>
+              <div><span>STILL OPEN</span><strong>{funnel.inVetting + funnel.awaitingConfirmation}</strong></div>
+            </div>
           </div>
         </section>
 

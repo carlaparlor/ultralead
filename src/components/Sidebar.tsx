@@ -1,5 +1,6 @@
 import { Archive, CalendarClock, ChartNoAxesCombined, CheckCheck, LayoutDashboard, List, Settings2, TrendingUp, X } from 'lucide-react'
 import type { View, Workspace } from '../domain/types'
+import { BrandMark, BrandPlus } from './BrandMark'
 
 const mainItems: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -21,8 +22,8 @@ export function Sidebar({ view, onNavigate, workspace, mobileOpen, onClose }: { 
     {mobileOpen && <button className="mobile-scrim" onClick={onClose} aria-label="Close navigation" />}
     <aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`} aria-label="Workspace navigation">
       <div className="brand">
-        <div className="brand-mark" aria-hidden="true"><span>+</span></div>
-        <div className="brand-wordmark"><strong>ultralead<span>+</span></strong></div>
+        <BrandMark />
+        <div className="brand-wordmark"><strong>ultralead<BrandPlus /></strong></div>
         <button className="icon-button close-nav" onClick={onClose} aria-label="Close navigation"><X size={18} /></button>
       </div>
       <div className="sidebar-section-label">WORKSPACE</div>
