@@ -8,6 +8,7 @@ import { PipelineView } from './components/PipelineView'
 import { ActivationsView } from './components/ActivationsView'
 import { SettingsView } from './components/SettingsView'
 import { ImportModal } from './components/ImportModal'
+import { CustomerModal } from './components/CustomerModal'
 import { ActivationModal, CallbackModal, HelpModal, SaleModal } from './components/OutcomeModals'
 import { Modal } from './components/ui'
 import { copyText } from './domain/clipboard'
@@ -15,7 +16,7 @@ import { localDayKey } from './domain/dates'
 import { parseLeads, type ImportPreview } from './domain/import'
 import { findLead, getSmartQueue, readiness } from './domain/queue'
 import { parseBackup } from './domain/storage'
-import { applyImport, clearCategory, createEmptyWorkspace, editSale, pruneExcluded, recordNoAnswer, recordNotInterested, recordSale, removeCallback, removeLead, removeSale, resetToQueue, saveCallback, saveNotes, updateSaleStage, verifyAge } from './domain/workspace'
+import { applyImport, clearCategory, createEmptyWorkspace, editSale, findCustomerLead, pruneExcluded, recordNoAnswer, recordNotInterested, recordSale, removeCallback, removeLead, removeSale, resetToQueue, saveCallback, saveNotes, updateSaleStage, verifyAge } from './domain/workspace'
 import type { Callback, ClearCategory, Lead, Sale, SaleStage, View, Workspace } from './domain/types'
 import { useWorkspace } from './hooks/useWorkspace'
 
@@ -24,6 +25,7 @@ type ModalState =
   | { type: 'callback'; lead: Lead; existing?: Callback; recordCall: boolean }
   | { type: 'sale'; lead: Lead; sale?: Sale }
   | { type: 'activation'; sale: Sale }
+  | { type: 'customer'; account: string }
   | { type: 'help' }
   | { type: 'confirm'; title: string; description: string; confirmLabel: string; action: () => void; danger?: boolean }
   | null
@@ -229,6 +231,7 @@ export default function App() {
       setModal({ type: 'confirm', title: 'Restore this backup?', description: 'Restoring replaces your entire current workspace with the selected backup. Export your current data first if you want to keep it.', confirmLabel: 'RESTORE BACKUP', danger: true, action: () => { setWorkspace(pruneExcluded(backup, new Date())); setSelection(null); setView('overview'); notify('Backup restored.') } })
     } catch { notify('Could not read that backup. Nothing was changed.') }
   }
+  const openCustomer = (account: string) => setModal({ type: 'customer', account })
   const onAutoCopy = (value: boolean) => setWorkspace(previous => ({ ...previous, settings: { ...previous.settings, autoCopy: value } }))
 
   return <div className="app-shell">
@@ -241,10 +244,10 @@ export default function App() {
       {storageWarning && <div className="storage-warning" role="alert">{storageWarning}</div>}
       <main className="main-content" id="main-content">
         {view === 'overview' && <Dashboard workspace={workspace} now={now} queue={queue} lead={lead} callback={callback} importMode={importMode} onImportMode={rememberImportMode} onQuickImport={quickImport} onCopy={() => lead && copyAccount(lead.accountNumber)} onCycle={cycle} onNoAnswer={noAnswer} onNotInterested={notInterested} onCallback={openCallback} onSale={openSale} onNotes={notes => lead && setWorkspace(previous => saveNotes(previous, lead.accountNumber, notes))} onNavigate={setView} onImport={openImport} onHelp={() => setModal({ type: 'help' })} onAutoCopy={onAutoCopy} />}
-        {view === 'leads' && <LeadsView workspace={workspace} now={now} onImport={openImport} onCopy={selected => copyAccount(selected.accountNumber)} onCall={onCall} onVerify={onVerify} onReset={onReset} onRemove={onRemoveLead} />}
-        {view === 'callbacks' && <CallbacksView workspace={workspace} now={now} onCall={onCall} onVerify={onVerify} onEdit={item => setModal({ type: 'callback', lead: findLead(workspace, item.lead.accountNumber) ?? item.lead, existing: item, recordCall: false })} onRemove={onRemoveCallback} />}
-        {view === 'pipeline' && <PipelineView workspace={workspace} onStage={onStage} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onRemove={onRemoveSale} />}
-        {view === 'activations' && <ActivationsView workspace={workspace} now={now} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onUndo={sale => setModal({ type: 'confirm', title: 'Move back to confirmation?', description: `${sale.lead.name}'s sale will no longer count as an activation until it is completed again.`, confirmLabel: 'MOVE BACK', action: () => applyStage(sale, 'pending_confirmation', 'Moved back to confirmation.') })} onRemove={onRemoveSale} />}
+        {view === 'leads' && <LeadsView workspace={workspace} now={now} onImport={openImport} onOpenCustomer={openCustomer} onCopy={selected => copyAccount(selected.accountNumber)} onCall={onCall} onVerify={onVerify} onReset={onReset} onRemove={onRemoveLead} />}
+        {view === 'callbacks' && <CallbacksView workspace={workspace} now={now} onOpenCustomer={openCustomer} onCall={onCall} onVerify={onVerify} onEdit={item => setModal({ type: 'callback', lead: findLead(workspace, item.lead.accountNumber) ?? item.lead, existing: item, recordCall: false })} onRemove={onRemoveCallback} />}
+        {view === 'pipeline' && <PipelineView workspace={workspace} onStage={onStage} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onRemove={onRemoveSale} onOpenCustomer={openCustomer} />}
+        {view === 'activations' && <ActivationsView workspace={workspace} now={now} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onUndo={sale => setModal({ type: 'confirm', title: 'Move back to confirmation?', description: `${sale.lead.name}'s sale will no longer count as an activation until it is completed again.`, confirmLabel: 'MOVE BACK', action: () => applyStage(sale, 'pending_confirmation', 'Moved back to confirmation.') })} onRemove={onRemoveSale} onOpenCustomer={openCustomer} />}
         {view === 'settings' && <SettingsView workspace={workspace} onAutoCopy={onAutoCopy} onAddPackage={name => { const trimmed = name.trim(); if (trimmed) setWorkspace(previous => previous.packages.some(item => item.toLowerCase() === trimmed.toLowerCase()) ? previous : { ...previous, packages: [...previous.packages, trimmed] }) }} onRemovePackage={name => setWorkspace(previous => ({ ...previous, packages: previous.packages.filter(item => item !== name) }))} onClear={onClear} onExport={onExport} onRestore={file => { void onRestore(file) }} />}
         <footer className="app-footer"><span>ULTRALEAD<span>+</span> <i>/</i> A LITTLE MORE FOCUS, EVERY DAY.</span><span>YOUR WORKSPACE <i>•</i> YOUR PACE</span></footer>
       </main>
@@ -255,6 +258,10 @@ export default function App() {
     {modal?.type === 'callback' && <CallbackModal key={`${modal.lead.accountNumber}-${modal.existing?.id ?? 'new'}`} lead={modal.lead} existing={modal.existing} now={now} onClose={() => setModal(null)} onSave={(dueAt, note) => { const next = saveCallback(workspace, modal.lead, dueAt, note, new Date(), modal.recordCall); setModal(null); if (modal.recordCall) advanceAfter(next, 'Callback scheduled.'); else { setWorkspace(next); notify('Callback updated.') } }} />}
     {modal?.type === 'sale' && <SaleModal key={modal.sale?.id ?? modal.lead.accountNumber} lead={modal.lead} sale={modal.sale} workspace={workspace} onClose={() => setModal(null)} onSave={(packageName, type) => { if (modal.sale) { setWorkspace(previous => editSale(previous, modal.sale!.id, packageName, type, new Date())); notify('Sale details updated.') } else { const next = recordSale(workspace, modal.lead, packageName, new Date()); if (next === workspace) notify('Sale not recorded. This account already has an open or completed sale.'); else advanceAfter(next, 'Sale sent to credit vetting.') } setModal(null) }} />}
     {modal?.type === 'activation' && <ActivationModal key={modal.sale.id} sale={modal.sale} onClose={() => setModal(null)} onSave={type => { applyStage(modal.sale, 'activated', `Activation completed as ${type === 'ATT' ? 'ATT' : 'non-ATT'}.`, type); setModal(null) }} />}
+    {modal?.type === 'customer' && (() => {
+      const customerLead = findCustomerLead(workspace, modal.account)
+      return customerLead ? <CustomerModal workspace={workspace} lead={customerLead} account={modal.account} now={now} onCopy={account => copyAccount(account)} onNotes={notes => setWorkspace(previous => saveNotes(previous, modal.account, notes))} onClose={() => setModal(null)} /> : null
+    })()}
     {modal?.type === 'help' && <HelpModal onClose={() => setModal(null)} />}
     {modal?.type === 'confirm' && <Modal title={modal.title} eyebrow="PLEASE CONFIRM" onClose={() => setModal(null)}><div className="modal-body"><p className="modal-intro confirm-description">{modal.description}</p><div className="modal-footer"><button className="button button-outline" onClick={() => setModal(null)}>CANCEL</button><button className={`button ${modal.danger ? 'button-danger' : 'button-primary'}`} onClick={() => { const action = modal.action; setModal(null); action() }}>{modal.confirmLabel} <ArrowRight size={15} /></button></div></div></Modal>}
   </div>

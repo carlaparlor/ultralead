@@ -122,6 +122,43 @@ describe('calling workflow', () => {
     expect(outcomes).toEqual(expect.arrayContaining(['no_answer', 'not_interested']))
   })
 
+  it('keeps notes and call history reachable after a sale, in every stage', () => {
+    const now = new Date()
+    const a = makeLead('5-871', { name: 'Sold Person' }), b = makeLead('5-872', { name: 'Activated Person' })
+    let ws = { ...createEmptyWorkspace(now), leads: [a, b] }
+    ws = saveNotes(ws, a.accountNumber, 'Wants the family package')
+    ws = recordSale(ws, a, 'Family 50GB', now)
+    ws = saveNotes(ws, b.accountNumber, 'Happy on the call')
+    ws = recordSale(ws, b, 'Solo 20GB', now)
+    const id = ws.sales.find(sale => sale.packageName === 'Solo 20GB')!.id
+    ws = updateSaleStage(ws, id, 'pending_confirmation', now)
+    ws = updateSaleStage(ws, id, 'activated', now, 'ATT')
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+
+    // In credit vetting
+    fireEvent.click(screen.getByRole('button', { name: /Sales pipeline/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Notes and history for Sold Person' }))
+    expect(dialog().getByLabelText(/CUSTOMER NOTES/)).toHaveValue('Wants the family package')
+    expect(dialog().getByText('Credit vetting')).toBeInTheDocument()
+    fireEvent.change(dialog().getByLabelText(/CUSTOMER NOTES/), { target: { value: 'Prefers Friday delivery' } })
+    fireEvent.click(dialog().getByRole('button', { name: /DONE/ }))
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).profiles['5-871'].notes).toBe('Prefers Friday delivery')
+
+    // Activated — from the activations list, including the recorded type and call history
+    fireEvent.click(screen.getByRole('button', { name: /Activations/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Notes and history for Activated Person' }))
+    expect(dialog().getByLabelText(/CUSTOMER NOTES/)).toHaveValue('Happy on the call')
+    expect(dialog().getByText('Activated · ATT')).toBeInTheDocument()
+    expect(dialog().getByText('Sale recorded', { selector: '.history-outcome' })).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: /DONE/ }))
+
+    // Still reachable from All leads
+    fireEvent.click(screen.getByRole('button', { name: /All leads/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Notes and history for Sold Person' }))
+    expect(dialog().getByLabelText(/CUSTOMER NOTES/)).toHaveValue('Prefers Friday delivery')
+  })
+
   it('shows no activation type for sales still in vetting or confirmation', () => {
     const now = new Date()
     const a = makeLead('5-861', { name: 'Vetting Person' }), b = makeLead('5-862', { name: 'Confirming Person' })

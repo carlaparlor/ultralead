@@ -190,6 +190,13 @@ export function editSale(workspace: Workspace, saleId: string, packageName: stri
   }
 }
 
+/** Finds a customer's lead snapshot wherever it still exists: the list, a sale or a callback. */
+export function findCustomerLead(workspace: Workspace, account: string): Lead | undefined {
+  return workspace.leads.find(lead => lead.accountNumber === account)
+    ?? workspace.sales.find(sale => sale.lead.accountNumber === account)?.lead
+    ?? workspace.callbacks.find(callback => callback.lead.accountNumber === account)?.lead
+}
+
 export function removeLead(workspace: Workspace, account: string): Workspace {
   return { ...workspace, leads: workspace.leads.filter(lead => lead.accountNumber !== account) }
 }
