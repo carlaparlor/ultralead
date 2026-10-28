@@ -43,7 +43,7 @@ describe('calling workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: /Callback C/ }))
     fireEvent.change(dialog().getByLabelText(/CALLBACK NOTE/), { target: { value: 'Call after work' } })
     fireEvent.click(dialog().getByRole('button', { name: /SAVE CALLBACK/ }))
-    expect(screen.getByRole('heading', { name: 'Your queue is clear.' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Queue is clear.' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /All leads/ }))
     expect(screen.getByText('Age review needed', { selector: '.status-pill' })).toBeInTheDocument()
@@ -175,7 +175,7 @@ describe('calling workflow', () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
       render(<App />)
       fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
-      expect(screen.getByRole('heading', { name: /How you're doing/ })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Insights' })).toBeInTheDocument()
       // Today: three attempts (not interested, no answer, sale)
       expect(screen.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
       expect(screen.getByText('SALES').parentElement).toHaveTextContent('1')

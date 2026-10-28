@@ -33,7 +33,7 @@ export function CustomerModal({ workspace, lead, account, now, onCopy, onNotes, 
   const attempts = [...(profile?.attempts ?? [])].sort((a, b) => b.at.localeCompare(a.at))
   const inDailyList = workspace.leads.some(item => item.accountNumber === account)
 
-  return <Modal title="Customer record." eyebrow="CUSTOMER / NOTES & HISTORY" onClose={onClose}>
+  return <Modal title="Customer record." eyebrow="CUSTOMER" onClose={onClose}>
     <div className="modal-body">
       <div className="customer-head">
         <Initials name={lead.name} />
@@ -70,7 +70,7 @@ export function CustomerModal({ workspace, lead, account, now, onCopy, onNotes, 
         onChange={event => { setDraft(event.target.value); onNotes(event.target.value) }}
         placeholder="Add anything you want to remember about this customer..."
       />
-      <div className="input-help"><Check size={12} /> Notes follow the account number, so they survive list imports and every sale stage.</div>
+      <div className="input-help"><Check size={12} /> Saved against the account.</div>
 
       <div className="form-label form-spaced">CALL HISTORY <span>{attempts.length ? `${attempts.length} RECORDED` : 'NONE YET'}</span></div>
       {attempts.length ? <ol className="history-list">{attempts.map(attempt => <li key={attempt.id}><span className={`history-outcome history-${attempt.outcome}`}>{outcomeLabels[attempt.outcome]}</span><time>{formatDate(attempt.at, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false })}</time></li>)}</ol> : <div className="history-empty">No calls logged for this customer yet.</div>}

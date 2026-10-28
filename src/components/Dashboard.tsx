@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, ArrowUpRight, CalendarClock, Check, CheckCheck, ClipboardPaste, Copy, Headphones, Layers3, ListFilter, RefreshCw, Shuffle, UsersRound } from 'lucide-react'
+import { ArrowRight, ArrowUpRight, CalendarClock, Check, CheckCheck, ClipboardPaste, Copy, Headphones, Layers3, ListFilter, RefreshCw, UsersRound } from 'lucide-react'
 import { formatDate, formatListDate, relativeDue } from '../domain/dates'
 import { createQueueIndex, readiness, type QueueItem } from '../domain/queue'
 import type { Callback, Lead, View, Workspace } from '../domain/types'
@@ -17,7 +17,7 @@ function QuickPaste({ mode, onMode, onImport, onOpen }: { mode: 'replace' | 'app
       <input
         value={text}
         spellCheck={false}
-        placeholder="Paste your lead list here — it imports the moment you paste"
+        placeholder="Paste your lead list — imports instantly"
         onChange={event => setText(event.target.value)}
         onPaste={event => { const pasted = event.clipboardData.getData('text/plain'); if (pasted) { event.preventDefault(); take(pasted) } }}
         onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); take(text) } }}
@@ -57,8 +57,8 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
   return <>
     <div className="desk-top">
       <div className="desk-title">
-        <h1>Your calling desk<span className="heading-period">.</span></h1>
-        <p>{formatDate(now, { weekday: 'long', day: 'numeric', month: 'long' })} <i>/</i> {queue.length} ready</p>
+        <h1>Calling desk</h1>
+        <p>{formatDate(now, { weekday: 'long', day: 'numeric', month: 'long' })}</p>
       </div>
       <div className="stat-strip" aria-label="Workspace overview">
         <button className="stat stat-green" onClick={() => onNavigate('leads')}><UsersRound size={14} /><strong>{formatCount(queue.length)}</strong><span>READY</span></button>
@@ -72,7 +72,7 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
 
     <div className="dashboard-columns">
       <section className="calling-section" aria-labelledby="calling-heading">
-        <div className="section-heading"><div><h2 id="calling-heading">Next in line<span className="heading-period">.</span></h2><p className="section-sub">One customer at a time · {fresh} fresh · {retries} retries</p></div><button className="smart-badge" onClick={onHelp}><Shuffle size={13} /> SMART CYCLING <span>↗</span></button></div>
+        <div className="section-heading"><div><h2 id="calling-heading">Next lead</h2><p className="section-sub">{fresh} fresh · {retries} retries</p></div></div>
         {lead ? <article className="lead-card">
           <div className="lead-card-top"><div className="lead-top-label"><span className={`light-dot ${isDue ? 'is-due' : ''}`} /> {isDue ? 'CALLBACK DUE' : 'YOUR NEXT LEAD'} <span className="muted-slash">/</span> {rank >= 0 ? `${formatCount(rank + 1)} OF ${formatCount(queue.length)}` : 'MANUAL PICK'}</div><button className="skip-button" onClick={() => onCycle(1)} title="Next lead (→)">SKIP LEAD <ArrowRight size={15} /></button></div>
           <div className="lead-identity"><Initials name={lead.name} /><div className="lead-name-block"><h3>{lead.name}</h3><div className="lead-tags"><span>{lead.sourceStatus.toUpperCase()}</span><i /> <span>{isDue ? 'CALLBACK' : 'LEAD'}</span></div></div></div>
@@ -86,10 +86,10 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
             <button className="outcome-callback" onClick={onCallback}><span>Callback</span><kbd>C</kbd></button>
             <button className="sale-action" onClick={onSale}><span>Made a sale</span><kbd>S</kbd></button>
           </div></div>
-        </article> : <div className="lead-card lead-empty"><EmptyState title="Your queue is clear." action={ageReview ? <button className="button button-primary" onClick={() => onNavigate('leads')}>Review {ageReview} lead{ageReview === 1 ? '' : 's'} <ArrowRight size={15} /></button> : <button className="button button-primary" onClick={onImport}>Import leads <ArrowRight size={15} /></button>}>
-          {ageReview ? 'Some leads need an age check before they can be called.' : workspace.leads.length || workspace.callbacks.length ? 'There are no leads ready right now. Callbacks and spaced retries will appear here when due.' : 'Paste your lead list to build a smarter calling queue.'}
+        </article> : <div className="lead-card lead-empty"><EmptyState title="Queue is clear." action={ageReview ? <button className="button button-primary" onClick={() => onNavigate('leads')}>Review {ageReview} lead{ageReview === 1 ? '' : 's'} <ArrowRight size={15} /></button> : <button className="button button-primary" onClick={onImport}>Import leads <ArrowRight size={15} /></button>}>
+          {ageReview ? 'Some leads need an age check first.' : workspace.leads.length || workspace.callbacks.length ? 'Nothing is ready right now. Callbacks and retries appear here when due.' : 'Paste a lead list to start calling.'}
         </EmptyState></div>}
-        <div className="desk-footer"><label><span>AUTO-COPY NEXT ACCOUNT</span><Toggle checked={workspace.settings.autoCopy} onChange={onAutoCopy} label="Auto-copy next account" /></label><span className="desk-hint">← → ARROW KEYS CYCLE · ⌘/CTRL V TO IMPORT ANYWHERE</span></div>
+        <div className="desk-footer"><label><span>AUTO-COPY NEXT ACCOUNT</span><Toggle checked={workspace.settings.autoCopy} onChange={onAutoCopy} label="Auto-copy next account" /></label><span className="desk-hint">← → CYCLE · ⌘/CTRL V IMPORT</span></div>
       </section>
 
       <aside className="focus-column" aria-label="At a glance">
@@ -119,7 +119,7 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
             {workspace.activity.length ? <div className="rail-activity">{workspace.activity.slice(0, 5).map(item => <div className="activity-row" key={item.id}><div className="activity-icon">{item.description.includes('Activation') ? <CheckCheck size={15} /> : item.description.includes('Callback') ? <CalendarClock size={15} /> : item.description.includes('Sale') ? <Layers3 size={15} /> : <Headphones size={15} />}</div><strong>{item.name}</strong><span>{item.description}</span><time>{formatDate(item.at, { hour: '2-digit', minute: '2-digit', hour12: false })}</time></div>)}</div> : <div className="activity-empty"><ListFilter size={16} /> Your call activity will appear here.</div>}
           </>}
         </div>
-        <div className="cycle-note"><div className="cycle-icon"><RefreshCw size={16} /></div><div><strong>Keys that save you time.</strong><p><kbd>N</kbd> no answer · <kbd>X</kbd> not interested · <kbd>C</kbd> callback · <kbd>S</kbd> sale · <kbd>V</kbd> copy · <kbd>←</kbd><kbd>→</kbd> cycle</p><button onClick={onHelp}>HOW CYCLING WORKS <ArrowRight size={14} /></button></div><ArrowUpRight size={14} className="cycle-corner" /></div>
+        <div className="cycle-note"><div className="cycle-icon"><RefreshCw size={16} /></div><div><strong>Shortcuts</strong><p><kbd>N</kbd> no answer · <kbd>X</kbd> not interested · <kbd>C</kbd> callback · <kbd>S</kbd> sale · <kbd>V</kbd> copy · <kbd>←</kbd><kbd>→</kbd> cycle</p><button onClick={onHelp}>HOW THE QUEUE WORKS <ArrowRight size={14} /></button></div><ArrowUpRight size={14} className="cycle-corner" /></div>
       </aside>
     </div>
   </>
