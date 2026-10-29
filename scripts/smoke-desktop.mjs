@@ -51,14 +51,26 @@ async function launch() {
     env,
     timeout: 30_000,
   })
+  application.on('console', message => {
+    if (message.type() === 'error') {
+      errors.push(`Main process: ${message.text()}`)
+      annotation('error', message.text())
+    }
+  })
   const page = await application.firstWindow({ timeout: 15_000 })
   page.setDefaultTimeout(15_000)
   progress('Load bundled UI and wait for the calling desk')
-  page.on('pageerror', error => errors.push(error.message))
+  page.on('pageerror', error => { errors.push(error.message); annotation('error', error.message) })
   page.on('request', request => {
     if (/^https?:/.test(request.url())) remoteRequests.push(request.url())
   })
-  // Reload with listeners attached so startup requests and renderer errors count.
+  // firstWindow() can resolve while BrowserWindow.loadURL() is still pending.
+  // Reloading immediately aborts that initial navigation and can open the native
+  // startup-error dialog. Wait for the real UI before exercising a reload.
+  await page.waitForURL('ultralead://app/', { waitUntil: 'load', timeout: 15_000 })
+  await page.getByRole('button', { name: 'IMPORT LEADS', exact: true }).waitFor()
+  // Reload with listeners attached so startup resources and errors count too.
+  progress('Reload the fully loaded local calling desk')
   await page.reload()
   await page.getByRole('button', { name: 'IMPORT LEADS', exact: true }).waitFor()
   return page
