@@ -43,6 +43,14 @@ const env = Object.fromEntries(Object.entries(process.env).filter(([key]) =>
   && !(process.platform === 'win32' && key.toLowerCase() === 'path')))
 if (process.platform === 'win32') env.PATH = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32')
 
+async function navigate(page, name) {
+  // Hosted Windows runners can have a <=1050px desktop. Use the same responsive
+  // navigation a person would use instead of forcing a click on the hidden rail.
+  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
+  if (await menu.isVisible()) await menu.click()
+  await page.getByRole('button', { name, exact: true }).click()
+}
+
 async function launch() {
   progress('Launch native Electron process')
   application = await electron.launch({
@@ -102,7 +110,7 @@ try {
   assert.equal(await application.evaluate(({ clipboard }) => clipboard.readText()), '5-9001')
 
   progress('Export the real Blob backup through Electron')
-  await page.getByRole('button', { name: 'Data & settings', exact: true }).click()
+  await navigate(page, 'Data & settings')
   // Bypass only the OS save dialog, not the app's actual Blob download path.
   await application.evaluate(({ session }, file) => {
     globalThis.backupDownload = new Promise(resolve => {
@@ -119,9 +127,9 @@ try {
   assert.equal(backup.profiles['5-9001'].notes, 'Saved offline in the desktop app')
 
   progress('Restore the exported backup')
-  await page.getByRole('button', { name: 'Overview', exact: true }).click()
+  await navigate(page, 'Overview')
   await page.getByLabel('CUSTOMER NOTES', { exact: true }).fill('This change will be replaced')
-  await page.getByRole('button', { name: 'Data & settings', exact: true }).click()
+  await navigate(page, 'Data & settings')
   await page.getByLabel('Choose backup file').setInputFiles(backupFile)
   await page.getByRole('dialog').getByRole('button', { name: 'RESTORE BACKUP', exact: true }).click()
   assert.equal(await page.getByLabel('CUSTOMER NOTES', { exact: true }).inputValue(), 'Saved offline in the desktop app')

@@ -10,7 +10,7 @@ protocol.registerSchemesAsPrivileged([
 ])
 
 app.setName('ultralead+')
-app.setAppUserModelId('com.ultralead.plus')
+if (process.platform === 'win32') app.setAppUserModelId('com.ultralead.plus')
 
 // Neither an upgrade nor the portable EXE's temporary extraction directory may
 // change this location. --user-data-dir is useful for isolated acceptance tests.

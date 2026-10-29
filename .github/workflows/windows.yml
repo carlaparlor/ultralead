@@ -36,6 +36,9 @@ jobs:
         shell: bash
         run: |
           node --input-type=module -e "import fs from 'node:fs'; const expected = 'v' + JSON.parse(fs.readFileSync('package.json')).version; if (process.env.GITHUB_REF_NAME !== expected) throw new Error('Release tag must be ' + expected);"
+      - name: Preflight desktop UI before packaging
+        timeout-minutes: 3
+        run: npm run build && npm run test:desktop:smoke
       - name: Build offline installer and portable EXE
         run: npm run dist:win
         env:

@@ -79,7 +79,7 @@ release/
 The **Windows app** workflow runs on pushes to `main` / `arena/**`, pull requests, matching version tags, and manual **Run workflow** dispatches. It:
 
 1. Installs locked build dependencies and runs web/desktop unit tests.
-2. Type-checks web and desktop code, then builds both Windows EXEs and hashes.
+2. Type-checks web and desktop code and smoke-tests the desktop UI (including responsive navigation) before building both Windows EXEs and hashes.
 3. Silently installs the real Setup EXE, checks shortcuts, and tests its sandboxed UI, import, real clipboard copying, backup export/restore, bundled fonts and restart persistence. The application's environment has **no Node.js on PATH**.
 4. Opens and closes the actual Portable EXE, also without Node.js on PATH.
 5. Uploads an **ultralead-windows** artifact with both EXEs and their checksums (14-day retention).
