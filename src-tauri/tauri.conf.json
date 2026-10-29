@@ -1,0 +1,32 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "ultralead+",
+  "version": "1.0.0",
+  "identifier": "za.ultralead.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "ultralead+",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 960,
+        "minHeight": 640
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "shortDescription": "Local-first calling desk",
+    "longDescription": "A private, local-first workspace for leads, callbacks and sales.",
+    "category": "Business",
+    "windows": { "nsis": { "displayLanguageSelector": false } }
+  }
+}

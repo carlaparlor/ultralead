@@ -2,17 +2,25 @@
 
 A minimal, local-first calling desk for moving through leads, remembering conversations, and tracking sales through to activation. No account, database, API key, or separate backend is required.
 
-## Start here
+## Install on Windows (no Node.js required)
 
-1. Install [Node.js](https://nodejs.org/) **22.12 or newer**.
-2. In this folder, run:
+1. Download the latest **ultralead+ Windows installer** (`.exe`) from the project's GitHub **Releases** page.
+2. Run the installer and follow the prompts. Launch **ultralead+** from the Start menu when it finishes.
 
-   ```sh
-   npm ci
-   npm run dev
-   ```
+The installer includes the application; Node.js is not needed to install or run it. Windows 10/11 is supported. On a machine without the Microsoft Edge WebView2 Runtime, the installer offers to download/install that Microsoft runtime, so an internet connection may be needed for first launch. The `.msi` installer is also available for managed deployments.
 
-3. Open the local address printed in the terminal (normally `http://localhost:5173`).
+Your workspace is stored locally on this Windows user profile and is not shared with the browser version or another computer. Keep regular backups via **Data & settings → Export backup**.
+
+### Run from source (developers)
+
+Install [Node.js](https://nodejs.org/) **22.12 or newer**, then run:
+
+```sh
+npm ci
+npm run dev
+```
+
+Open the local address printed in the terminal (normally `http://localhost:5173`). To run the desktop shell during development, install Rust and the Windows build prerequisites, then use `npm run desktop:dev`. Build an installer with `npm run desktop:build`.
 
 The first visit contains clearly labelled **sample data**. Choose **Clear sample data**, or simply import your own leads: the first real import replaces the entire sample workspace, even if you select “add to current list”. Your real data is never mixed with the sample records.
 
