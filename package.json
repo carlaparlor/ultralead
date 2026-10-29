@@ -10,7 +10,7 @@
     "test": "vitest run && npm run test:desktop",
     "test:watch": "vitest",
     "desktop": "npm run build && electron .",
-    "test:desktop": "node --test desktop/protocol.test.cjs desktop/packaging.test.cjs",
+    "test:desktop": "node --test desktop/protocol.test.cjs desktop/packaging.test.cjs desktop/main.test.cjs",
     "test:desktop:smoke": "node scripts/smoke-desktop.mjs",
     "dist:win": "npm run build && electron-builder --win --x64 --publish never && node scripts/checksums.mjs"
   },
