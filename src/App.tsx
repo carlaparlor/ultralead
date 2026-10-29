@@ -223,7 +223,7 @@ export default function App() {
     const anchor = document.createElement('a')
     anchor.href = url; anchor.download = `ultralead-backup-${localDayKey(new Date())}.json`; anchor.click()
     window.setTimeout(() => URL.revokeObjectURL(url), 1000)
-    notify('Backup downloaded. Keep it somewhere secure.')
+    notify('Backup export started. Keep the file somewhere secure.')
   }
   const onRestore = async (file: File) => {
     try {

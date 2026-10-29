@@ -23,7 +23,17 @@ The Vitest suite covers:
 - React workflows from import through age review, callback, sale, vetting, confirmation and activation; paste-anywhere import with undo; remembered replace/add choice; notes surviving list replacement; the `N`/`X`/`C`/`S`/`V` shortcuts and arrow-key cycling; pagination; date filters; and the callback-due/clipboard timing boundary.
 - Axe accessibility smoke checks for the calling desk and import dialog. The jsdom checks exclude colour contrast because jsdom has no layout; check contrast in a real browser too.
 
-The production build also type-checks the application and tests. Tests use invented customer details and do not access an external calling system.
+`npm test` also runs Node-based desktop security and packaging tests: trusted-origin and clipboard-permission checks, path traversal/Windows path rejection, real asset responses and MIME/CSP headers, electron-builder schema validation, bundled installer/portable targets, no-elevation shortcuts and data-retention settings. These tests do not need a graphical session or native Electron runtime.
+
+The production build also type-checks the application, tests and Electron entry point/protocol code. Tests use invented customer details and do not access an external calling system.
+
+### Native Windows acceptance
+
+The **Windows app** GitHub Actions workflow builds the actual Setup and Portable EXEs, then runs `scripts/test-windows.ps1`. It silently installs into a temporary folder, checks Desktop/Start menu shortcuts, and runs `scripts/smoke-desktop.mjs` against the **installed** executable. The app's PATH contains only Windows system tools, not Node.js. The smoke pass checks the sandbox/context isolation, no renderer Node APIs, secure local origin, bundled assets/fonts without remote requests, real clipboard copying, lead import, native Blob backup download, validated restoration and full-restart persistence. The PowerShell test also starts and closes the real portable wrapper without Node on PATH.
+
+On a graphical development machine, `npm run build && npm run test:desktop:smoke` tests the source desktop shell; `npm run test:desktop:smoke -- --executable=release/win-unpacked/ultralead-plus.exe` tests a packaged staging executable. These integration checks require the native Electron runtime; do not report them as passing on a headless sandbox that cannot download/run it. End users do not run these commands.
+
+Before a release, also check a standard Windows 10/11 x64 account without Node installed: double-click Setup, confirm there is no elevation prompt, check launch/shortcuts, disconnect the internet, paste/copy leads, edit notes, export and restore through the real OS dialogs, restart, upgrade over the existing installation, and uninstall/reinstall without losing the workspace. Run the portable EXE from a path containing spaces and confirm it opens the same workspace. Unsigned-build and workplace-policy warnings still need testing on an actual user device. See [Windows instructions](windows.md).
 
 A real Chromium smoke pass was also used to check desktop/mobile layouts, backup export and restore, and Axe results across the principal views and dialogs. Automated accessibility tools cannot replace keyboard and assistive-technology testing.
 

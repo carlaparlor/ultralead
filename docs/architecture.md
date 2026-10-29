@@ -23,6 +23,16 @@ src/
 
 Domain functions are independent of React. Timestamps are ISO strings; callback input and day boundaries use the browser's local time. List dates are calendar dates, not UTC timestamps. The recent activity feed is capped at 300 entries; per-customer call attempts remain in the profile until history is cleared.
 
+## Packaged Windows app
+
+`desktop/main.cjs` hosts the same production `dist` UI in Electron. `electron-builder.yml` embeds the runtime and UI in a full, one-click, per-user NSIS installer and a separate portable EXE. There is no Vite server, loopback HTTP server, Node.js installation step, WebView2 bootstrapper, or network dependency at run time. The normal browser build remains usable independently.
+
+`desktop/protocol.cjs` serves only bundled assets under the fixed, secure, standard origin **`ultralead://app/`**, with correct MIME types and a Content Security Policy. It rejects traversal/Windows path tricks and does not expose arbitrary files. The window uses a sandboxed, context-isolated renderer with Node integration disabled and no preload/IPC bridge. Remote requests, external navigation, popups and webviews are blocked; permissions default to denied except local clipboard writes. Backup Blob downloads use the native save dialog, and restoration retains the existing validated file-input workflow.
+
+A fixed **`%APPDATA%\\ultralead-plus`** user/session profile keeps localStorage and preferences independent of installer versions and portable extraction directories. Both editions use the same profile and single-instance lock. Ordinary uninstallation retains the profile. The browser and desktop origins have independent storage; moving a workspace is an explicit backup/restore operation. Do not change the application ID, protocol origin, or profile path without a data migration.
+
+The Windows Actions workflow builds, tests the real installed app with Node removed from its PATH, checks the portable launch, and publishes EXEs/checksums on matching version tags. See [Windows packaging](windows.md).
+
 ## Data boundaries and invariants
 
 - A **lead** is a snapshot of the current daily list, keyed by its `5-` account number. The list has at most one row per account. Replacing it does not replace other entities.

@@ -36,7 +36,7 @@ export function Sidebar({ view, onNavigate, workspace, mobileOpen, onClose }: { 
       </nav>
       <div className="sidebar-bottom">
         <div className="sidebar-rule" />
-        <div className="local-label"><Archive size={13} /><span>PRIVATE TO THIS BROWSER</span></div>
+        <div className="local-label"><Archive size={13} /><span>PRIVATE TO THIS DEVICE</span></div>
       </div>
     </aside>
   </>

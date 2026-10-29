@@ -1,0 +1,103 @@
+name: Windows app
+
+on:
+  push:
+    branches: [main, 'arena/**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  build:
+    name: Build and test Windows packages
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install build dependencies
+        run: npm ci
+      - name: Test application and desktop packaging
+        run: npm test
+      - name: Check release tag matches package version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          node --input-type=module -e "import fs from 'node:fs'; const expected = 'v' + JSON.parse(fs.readFileSync('package.json')).version; if (process.env.GITHUB_REF_NAME !== expected) throw new Error('Release tag must be ' + expected);"
+      - name: Build offline installer and portable EXE
+        run: npm run dist:win
+        env:
+          # Optional. Without a certificate, builds are explicitly unsigned.
+          WIN_CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+      - name: Test installed and portable apps without Node on PATH
+        shell: pwsh
+        run: ./scripts/test-windows.ps1
+      - name: Upload Windows downloads
+        uses: actions/upload-artifact@v4
+        with:
+          name: ultralead-windows
+          path: |
+            release/*.exe
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+      - name: Download instructions
+        shell: pwsh
+        run: |
+          @'
+          ## Windows downloads
+          Download the **ultralead-windows** artifact below and extract it.
+          - **Setup EXE** (recommended): double-click to install and open ultralead+.
+          - **Portable EXE**: double-click to run without installation.
+          Neither option needs Node.js, npm, a terminal, admin rights, or internet access to run.
+          On a version-tag build, these same files are published under **Releases**.
+          Unsigned builds may be blocked by Windows or workplace policy; only run trusted downloads.
+          '@ >> $env:GITHUB_STEP_SUMMARY
+
+  release:
+    name: Publish Windows release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ultralead-windows
+          path: release
+      - name: Publish tested downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cat > release-notes.md <<'NOTES'
+          ## Windows: download, double-click, done
+
+          **Recommended:** download the `ultralead-plus-Setup-…-x64.exe` file below. It installs for your Windows user, adds Desktop and Start menu shortcuts, and opens the app.
+
+          **No installation:** download `ultralead-plus-Portable-…-x64.exe` instead.
+
+          Both include the complete runtime. **No Node.js, npm, terminal commands, administrator access, or internet connection is required to run the app.** Windows 10/11, 64-bit (x64).
+
+          Your workspace stays on this device. Installed and portable copies use the same Windows-user workspace. Export backups regularly in **Data & settings**. To upgrade, close the app and run the newer installer; your workspace is retained.
+
+          Builds without a signing certificate may trigger SmartScreen or workplace application policies. Only run downloads you trust; do not disable Windows security. See [Windows instructions](https://github.com/carlaparlor/ultralead/blob/main/docs/windows.md) for details, including moving an existing browser workspace.
+          NOTES
+          gh release create "$GITHUB_REF_NAME" release/*.exe release/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "ultralead+ $GITHUB_REF_NAME" --notes-file release-notes.md

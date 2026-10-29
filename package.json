@@ -7,8 +7,12 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run && npm run test:desktop",
+    "test:watch": "vitest",
+    "desktop": "npm run build && electron .",
+    "test:desktop": "node --test desktop/protocol.test.cjs desktop/packaging.test.cjs",
+    "test:desktop:smoke": "node scripts/smoke-desktop.mjs",
+    "dist:win": "npm run build && electron-builder --win --x64 --publish never && node scripts/checksums.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -24,12 +28,23 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^5.1.0",
     "axe-core": "^4.14.0",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
     "jsdom": "^26.1.0",
+    "playwright-core": "1.64.1",
     "typescript": "~5.8.3",
     "vite": "^7.3.7",
     "vitest": "^5.0.5"
   },
   "engines": {
     "node": ">=22.12.0"
-  }
+  },
+  "description": "A minimal, local-first calling desk for leads, callbacks and activations.",
+  "author": "ultralead+ contributors",
+  "homepage": "https://github.com/carlaparlor/ultralead",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/carlaparlor/ultralead.git"
+  },
+  "main": "desktop/main.cjs"
 }

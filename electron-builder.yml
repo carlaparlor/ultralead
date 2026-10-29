@@ -1,0 +1,44 @@
+appId: com.ultralead.plus
+productName: ultralead+
+# The web build and Electron runtime are embedded, not downloaded at install time.
+asar: true
+npmRebuild: false
+compression: maximum
+directories:
+  output: release
+  buildResources: desktop/assets
+files:
+  - dist/**/*
+  - desktop/main.cjs
+  - desktop/protocol.cjs
+  - desktop/assets/icon.png
+  - package.json
+extraResources:
+  - from: src/fonts/OFL-CourierPrime.txt
+    to: licenses/OFL-CourierPrime.txt
+win:
+  executableName: ultralead-plus
+  icon: desktop/assets/icon.ico
+  requestedExecutionLevel: asInvoker
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+nsis:
+  artifactName: ultralead-plus-Setup-${version}-${arch}.${ext}
+  oneClick: true
+  perMachine: false
+  allowElevation: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: ultralead+
+  runAfterFinish: true
+  deleteAppDataOnUninstall: false
+  differentialPackage: false
+  uninstallDisplayName: ultralead+
+portable:
+  artifactName: ultralead-plus-Portable-${version}-${arch}.${ext}
+  requestExecutionLevel: user
+# Releases are uploaded by the workflow only after tests pass.
+publish: null

@@ -2,21 +2,23 @@
 
 A minimal, local-first calling desk for moving through leads, remembering conversations, and tracking sales through to activation. No account, database, API key, or separate backend is required.
 
-## Start here
+## Windows — download, double-click, done
 
-1. Install [Node.js](https://nodejs.org/) **22.12 or newer**.
-2. In this folder, run:
+**No Node.js, npm, terminal, separate browser, or administrator access required.** The complete app and runtime are packaged together. Installation and everyday use work offline after downloading the file.
 
-   ```sh
-   npm ci
-   npm run dev
-   ```
+1. Open [**Windows downloads → Releases**](https://github.com/carlaparlor/ultralead/releases).
+2. Download **`ultralead-plus-Setup-<version>-x64.exe`** (not the “Source code” ZIP).
+3. Double-click it. The one-click installer installs for your Windows user, adds **Desktop and Start menu shortcuts**, and opens ultralead+.
 
-3. Open the local address printed in the terminal (normally `http://localhost:5173`).
+Next time, just open **ultralead+** from your Desktop or Start menu. Supports **Windows 10/11, 64-bit (x64)**. If you cannot install software, download **`ultralead-plus-Portable-<version>-x64.exe`** instead and double-click to run it without installation. Both editions keep their workspace on this PC, under the same Windows user.
 
-The first visit contains clearly labelled **sample data**. Choose **Clear sample data**, or simply import your own leads: the first real import replaces the entire sample workspace, even if you select “add to current list”. Your real data is never mixed with the sample records.
+If Releases is empty, a package has not been published yet. The [**Windows app build workflow**](https://github.com/carlaparlor/ultralead/actions/workflows/windows.yml) produces an **ultralead-windows** download containing both EXEs; version-tag builds also publish them to Releases. Building from source is for developers, not an installation requirement.
 
-For a production build, run `npm run build`, then `npm run preview` to try it locally. The `dist` folder can also be hosted as a static site at the root of an HTTPS origin; no application server is needed. Use the same address and browser each day so you see the same locally saved workspace.
+Unsigned builds may show a Windows SmartScreen warning or be blocked by workplace policy. Only run downloads you trust; do not disable Windows security. See [Windows installation, upgrades and troubleshooting](docs/windows.md).
+
+The first launch contains clearly labelled **sample data**. Choose **Clear sample data**, or simply import your own leads: the first real import replaces the entire sample workspace, even if you select “add to current list”. Your real data is never mixed with the sample records.
+
+Already using the browser version? **Export backup** there, then **Restore backup** in the Windows app to move your workspace. Browser and desktop storage do not merge automatically.
 
 ## Your daily workflow
 
@@ -93,9 +95,9 @@ A retained callback can still become callable even if its lead has been removed 
 
 ## Backups and privacy
 
-- Data is stored in **this browser's localStorage**, scoped to the exact site origin (including port). It is not sent to a backend or shared with coworkers or other devices. The app does not use third-party analytics.
-- Browser storage and exported JSON backups are **not encrypted**. Backups include customer names, account numbers, IDs, notes, and sales. Use a trusted device, secure backups, and follow your employer's customer-data and privacy policies.
-- Clearing browser/site data, using private browsing, changing browsers or addresses, or hitting storage limits can lose access to saved work. A storage failure is shown in the app. Export a backup regularly using **Data & settings → Export backup**; use **Restore backup** to validate and replace the current workspace with one you previously exported.
+- Data is stored in **localStorage on this device**. The Windows app uses its own persistent Chromium profile in **`%APPDATA%\ultralead-plus`**, separate from the installation directory; upgrades and ordinary uninstallation retain it. In a web browser, storage is scoped to that browser and the exact site origin (including port). Neither edition sends your data to a backend or shares it with coworkers or other devices. The app does not use third-party analytics.
+- Local storage and exported JSON backups are **not encrypted**. Backups include customer names, account numbers, IDs, notes, and sales. Use a trusted device, secure backups, and follow your employer's customer-data and privacy policies.
+- Deleting the desktop profile, clearing browser/site data, using private browsing, changing browsers or addresses, or hitting storage limits can lose access to saved work. A storage failure is shown in the app. Export a backup regularly using **Data & settings → Export backup**; use **Restore backup** to validate and replace the current workspace with one you previously exported.
 - Tabs on the same browser and origin listen for each other's changes, but concurrent edits are last-write-wins. This is not a multi-user database. Keep a backup before making large changes.
 - Browser storage has finite, browser-dependent capacity. The lead table is paginated and queue lookups are indexed, but very large histories or a shared team deployment should use a more capable storage service.
 
@@ -107,12 +109,21 @@ Courier Prime is committed to this repository in `src/fonts/` (two woff2 files, 
 
 To ship Courier For The People as well, put its web font files in `src/fonts/` and uncomment the matching `@font-face` block at the top of `src/styles.css`. Keep that font's OFL licence alongside the files.
 
-## Development and tests
+## Development and tests (source code only)
+
+**Node.js 22.12+ is needed only to develop or build the app, never to run a packaged Windows download.**
 
 ```sh
-npm test          # unit + React workflow tests
-npm run build     # TypeScript check + production build
-npm run preview   # serve the built site locally
+npm ci
+npm run dev                  # browser development server, normally http://localhost:5173
+npm test                     # unit + React workflows + desktop security/packaging checks
+npm run build                # type-check web + desktop code and build the web UI
+npm run preview              # serve the built site locally
+npm run desktop              # build and launch the desktop app from source
+npm run dist:win             # on Windows: create Setup + Portable EXEs and SHA256SUMS.txt in release/
+npm run test:desktop:smoke    # desktop integration test; requires a graphical session
 ```
 
-See [architecture](docs/architecture.md) for the data model, queue rules and extension points, and [testing](docs/testing.md) for the automated coverage and a manual checklist.
+The web `dist` folder can still be hosted as a static site at the root of an HTTPS origin; no application server is needed. Use the same address and browser each day to see the same browser workspace. The desktop app does not need a local server or an open terminal.
+
+See [Windows packaging and releases](docs/windows.md#building-and-publishing-maintainers-only), [architecture](docs/architecture.md) for the data model, queue rules and extension points, and [testing](docs/testing.md) for the automated coverage and a manual checklist.
