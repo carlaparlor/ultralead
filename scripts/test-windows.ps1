@@ -13,7 +13,12 @@ $launcher = $null
 try {
     $env:Path = Join-Path $env:SystemRoot 'System32'
     # NSIS requires /D to be the last parameter, without quotes even for spaces.
-    $installer = Start-Process -FilePath $setup[0].FullName -ArgumentList "/S /D=$installDirectory" -Wait -PassThru
+    Write-Host '::notice title=Windows acceptance::Installing the Setup EXE with no Node on PATH.'
+    $installer = Start-Process -FilePath $setup[0].FullName -ArgumentList "/S /D=$installDirectory" -PassThru
+    if (-not $installer.WaitForExit(60000)) {
+        $installer.Kill($true)
+        throw 'Installer did not finish within 60 seconds.'
+    }
     if ($installer.ExitCode -ne 0) { throw "Installer failed: $($installer.ExitCode)" }
     $executable = Join-Path $installDirectory 'ultralead-plus.exe'
     if (-not (Test-Path $executable)) { throw 'Installer did not create the application executable.' }
@@ -23,11 +28,13 @@ try {
     }
 
     # The test harness uses its absolute Node path; the app itself cannot find Node.
+    Write-Host '::notice title=Windows acceptance::Installer and shortcuts passed; testing the installed application.'
     & $node 'scripts/smoke-desktop.mjs' --executable $executable
     if ($LASTEXITCODE -ne 0) { throw 'Installed app smoke test failed.' }
 
     # The portable wrapper extracts to TEMP and starts the same offline application.
     # Its own lifetime includes the child app, so check the real visible window.
+    Write-Host '::notice title=Windows acceptance::Installed application passed; opening the Portable EXE.'
     $launcher = Start-Process -FilePath $portable[0].FullName -ArgumentList "--user-data-dir=`"$portableProfile`"" -PassThru
     $window = $null
     $deadline = [DateTime]::UtcNow.AddSeconds(60)
@@ -45,12 +52,17 @@ try {
     if (-not $launcher.WaitForExit(15000)) { throw 'Portable EXE did not close cleanly.' }
     if ($launcher.ExitCode -ne 0) { throw "Portable EXE failed: $($launcher.ExitCode)" }
     Write-Host 'Windows acceptance passed: one-click installer, shortcuts and portable launch without Node on PATH.'
+} catch {
+    $message = $_.Exception.Message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+    Write-Host "::error title=Windows acceptance::$message"
+    throw
 } finally {
     $env:Path = $oldPath
     if ($launcher -and -not $launcher.HasExited) { $launcher.Kill($true); $launcher.WaitForExit() }
     $uninstaller = Join-Path $installDirectory 'Uninstall ultralead-plus.exe'
     if (Test-Path $uninstaller) {
-        $uninstall = Start-Process -FilePath $uninstaller -ArgumentList "/S _?=$installDirectory" -Wait -PassThru
+        $uninstall = Start-Process -FilePath $uninstaller -ArgumentList "/S _?=$installDirectory" -PassThru
+        if (-not $uninstall.WaitForExit(30000)) { $uninstall.Kill($true); throw 'Test uninstaller did not finish.' }
         if ($uninstall.ExitCode -ne 0) { Write-Warning "Uninstaller exit code: $($uninstall.ExitCode)" }
     }
     if (Test-Path $temporary) { Remove-Item $temporary -Recurse -Force }

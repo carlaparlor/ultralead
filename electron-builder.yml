@@ -3,7 +3,7 @@ productName: ultralead+
 # The web build and Electron runtime are embedded, not downloaded at install time.
 asar: true
 npmRebuild: false
-compression: maximum
+compression: normal
 directories:
   output: release
   buildResources: desktop/assets

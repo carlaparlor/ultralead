@@ -43,6 +43,7 @@ jobs:
           WIN_CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
       - name: Test installed and portable apps without Node on PATH
+        timeout-minutes: 5
         shell: pwsh
         run: ./scripts/test-windows.ps1
       - name: Upload Windows downloads
