@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { createLocalWorkspaceRepository, parseBackup, STORAGE_KEY } from '../domain/storage'
 import { createEmptyWorkspace } from '../domain/workspace'
 import { pruneExcluded } from '../domain/workspace'
@@ -36,14 +36,18 @@ export function useWorkspace() {
     return () => window.removeEventListener('storage', onStorage)
   }, [])
 
-  useEffect(() => {
-    if (!initial.canSave) return
+  const persistNow = useCallback((value: Workspace): boolean => {
+    if (!initial.canSave || !repository) return false
     try {
-      repository?.save(workspace)
+      repository.save(value)
+      return true
     } catch {
       setStorageWarning('Browser storage is full or unavailable. Changes may not be saved; export a backup before leaving.')
+      return false
     }
-  }, [workspace, initial.canSave, repository])
+  }, [initial.canSave, repository])
 
-  return { workspace, setWorkspace, now, setNow, storageWarning }
+  useEffect(() => { persistNow(workspace) }, [workspace, persistNow])
+
+  return { workspace, setWorkspace, now, setNow, storageWarning, persistNow }
 }

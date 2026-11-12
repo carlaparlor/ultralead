@@ -17,11 +17,13 @@ The Vitest suite covers:
 - Birthday boundaries, leap dates, local-day formatting and invalid IDs.
 - Per-workspace daily shuffling, due callbacks, cooldowns, three-attempt limits, fresh-lead priority, not-interested persistence, manual reset and expiry at age 60.
 - Callback upserts, sale stage transitions and duplicate protection, editable package, and the rule that ATT/non-ATT is only recorded at activation (an activation without a type is rejected, and an unactivated sale cannot carry one). Selective per-record and per-category deletion.
-- Local persistence, same-origin tab updates, backup validation, corrupt/unavailable storage and clipboard fallback/failure.
+- Exact-cent referral tiers around R200, unknown/invalid prices, referral attribution and duplicate-account protection, excluded or do-not-call referrals absent from the list, normal queue safeguards, stage-derived eligibility, manual payments, stale confirmations, reversals, deletion, corrections and payment snapshots. Paid-review comparisons cover increases, decreases, unchanged tiers, missing prices, reactivations and replaced sales without creating an amount due.
+- Local persistence, version-1 migration, referral backup validation, same-origin tab updates, corrupt/unavailable storage and clipboard fallback/failure.
 - Insight windows: attempt tallies, contact and conversion rates, bucket stacking, funnel and activation rate, days to activate, ATT split, package ranking and previous-period comparison, including an empty workspace.
 - Customer notes and call history reachable and editable from All leads, Callbacks, Sales pipeline and Activations, including after a sale and after an activation.
 - React workflows from import through age review, callback, sale, vetting, confirmation and activation; paste-anywhere import with undo; remembered replace/add choice; notes surviving list replacement; the `N`/`X`/`C`/`S`/`V` shortcuts and arrow-key cycling; pagination; date filters; and the callback-due/clipboard timing boundary.
-- Axe accessibility smoke checks for the calling desk and import dialog. The jsdom checks exclude colour contrast because jsdom has no layout; check contrast in a real browser too.
+- Referral UI workflows from an unlinked introduction through lead creation, age review, sale, activation, payment and correction; missing-price and duplicate handling; and stale cross-tab payment confirmation.
+- Axe accessibility smoke checks for the calling desk, referrals, and dialogs. The jsdom checks exclude colour contrast because jsdom has no layout; check contrast in a real browser too.
 
 The production build also type-checks the application and tests. Tests use invented customer details and do not access an external calling system.
 
@@ -39,6 +41,7 @@ A real Chromium smoke pass was also used to check desktop/mobile layouts, backup
 7. Export a backup, change the workspace, restore the file, and verify the restored data. Attempt to restore invalid JSON and confirm nothing changes.
 8. Check the calling desk, lists, dialogs and navigation at desktop and narrow mobile widths. Check keyboard focus, Escape to close a dialog, that arrow keys cycle the queue without logging anything, and that shortcuts do not fire while typing.
 9. Open **Insights** after logging a mix of outcomes. Check that the counts match what you logged, that switching today / 7 days / 30 days / all time changes them, and that the funnel, ATT split and package list agree with the pipeline and activations pages.
-10. Open a second tab on the same origin and confirm ordinary edits appear in the other tab. Do not treat this as concurrent multi-user coordination.
+10. In a clean workspace, add a referral without an account, link it later, add the customer to leads and verify age. Record a sale at R200.00 and take it through vetting, confirmation and activation; check that R20 becomes due only after activation. Try R200.01 and an activation without a price. Record a payment, then change the price across the R200 boundary: check the possible difference, original payment history and zero ready-to-pay balance. Move the activation back and verify no comparison or second payment is offered. Correct a paid mark only as a test and check that its snapshot remains in history. Restore an old version-1 backup and confirm its sale prices are unknown.
+11. Open a second tab on the same origin and confirm ordinary edits appear in the other tab. Do not treat this as concurrent multi-user coordination.
 
 Never use real customer data for automated tests. Clipboard permissions, browser storage quotas, private-browsing behaviour, and local time zones vary by browser and should be checked in the actual workplace environment.

@@ -53,6 +53,8 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
   const rank = lead ? queue.findIndex(item => item.lead.accountNumber === lead.accountNumber) : -1
   const attempts = lead ? (workspace.profiles[lead.accountNumber]?.attempts.length ?? 0) : 0
   const isDue = !!callback && new Date(callback.dueAt).getTime() <= now.getTime()
+  const referral = lead ? workspace.referrals.find(item => item.accountNumber === lead.accountNumber) : undefined
+  const referrer = workspace.referrers.find(item => item.id === referral?.referrerId)
 
   return <>
     <div className="desk-top">
@@ -78,6 +80,7 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
           <div className="lead-identity"><Initials name={lead.name} /><div className="lead-name-block"><h3>{lead.name}</h3><div className="lead-tags"><span>{lead.sourceStatus.toUpperCase()}</span><i /> <span>{isDue ? 'CALLBACK' : 'LEAD'}</span></div></div></div>
           <div className="account-box"><div><span className="field-caption">ACCOUNT NUMBER</span><strong>{lead.accountNumber}</strong></div><button className="copy-button" onClick={onCopy}><Copy size={15} /> <span>COPY</span></button></div>
           <div className="lead-meta"><div><span className="field-caption">CUSTOMER ID</span><strong>{lead.customerId || 'NOT PROVIDED'}</strong></div><div><span className="field-caption">LIST DATE</span><strong>{formatListDate(lead.listDate)}</strong></div><div><span className="field-caption">ATTEMPTS</span><strong>{formatCount(attempts)}</strong></div></div>
+          {referral && referrer && <div className="desk-referral"><UsersRound size={15} /><span><strong>REFERRED BY {referrer.name}</strong>{referral.customerContact ? ` · ${referral.customerContact}` : ''}</span><button onClick={() => onNavigate('referrals')}>VIEW <ArrowRight size={13} /></button></div>}
           {callback?.note && <div className="callback-note"><CalendarClock size={15} /><span><strong>CALLBACK NOTE</strong> {callback.note}</span></div>}
           <div className="lead-notes"><div className="light-section-label"><label htmlFor="lead-notes">CUSTOMER NOTES</label><span><Check size={12} /> AUTO-SAVED</span></div><textarea id="lead-notes" value={workspace.profiles[lead.accountNumber]?.notes ?? ''} onChange={event => onNotes(event.target.value)} placeholder="Add a note for next time..." rows={2} /></div>
           <div className="outcome-section"><div className="light-section-label"><span>LOG THE OUTCOME</span><span className="outcome-hint">AFTER YOUR CALL</span></div><div className="outcome-actions">

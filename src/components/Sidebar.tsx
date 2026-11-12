@@ -1,4 +1,4 @@
-import { Archive, CalendarClock, ChartNoAxesCombined, CheckCheck, LayoutDashboard, List, Settings2, TrendingUp, X } from 'lucide-react'
+import { Archive, CalendarClock, ChartNoAxesCombined, CheckCheck, Handshake, LayoutDashboard, List, Settings2, TrendingUp, X } from 'lucide-react'
 import type { View, Workspace } from '../domain/types'
 
 const mainItems: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
@@ -7,6 +7,7 @@ const mainItems: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'callbacks', label: 'Callbacks', icon: CalendarClock },
   { id: 'pipeline', label: 'Sales pipeline', icon: ChartNoAxesCombined },
   { id: 'activations', label: 'Activations', icon: CheckCheck },
+  { id: 'referrals', label: 'Referrals', icon: Handshake },
   { id: 'insights', label: 'Insights', icon: TrendingUp },
 ]
 
@@ -16,6 +17,7 @@ export function Sidebar({ view, onNavigate, workspace, mobileOpen, onClose }: { 
     callbacks: workspace.callbacks.length,
     pipeline: workspace.sales.filter(sale => sale.stage === 'credit_vetting' || sale.stage === 'pending_confirmation').length,
     activations: workspace.sales.filter(sale => sale.stage === 'activated').length,
+    referrals: workspace.referrals.length,
   }
   return <>
     {mobileOpen && <button className="mobile-scrim" onClick={onClose} aria-label="Close navigation" />}
@@ -35,7 +37,6 @@ export function Sidebar({ view, onNavigate, workspace, mobileOpen, onClose }: { 
         </button>
       </nav>
       <div className="sidebar-bottom">
-        <div className="sidebar-rule" />
         <div className="local-label"><Archive size={13} /><span>PRIVATE TO THIS BROWSER</span></div>
       </div>
     </aside>

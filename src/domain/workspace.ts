@@ -1,11 +1,12 @@
 import { exclusionReason, type ImportPreview } from './import'
+import { isPackagePrice } from './money'
 import { RETRY_DELAY_MS } from './queue'
 import { emptyProfile, makeId, type ActivationType, type Activity, type CallOutcome, type Callback, type ClearCategory, type CustomerProfile, type Lead, type Sale, type SaleStage, type Workspace } from './types'
 
 export function createEmptyWorkspace(now = new Date()): Workspace {
   return {
-    version: 1, isDemo: false, createdAt: now.toISOString(), deviceSeed: makeId(),
-    leads: [], profiles: {}, callbacks: [], sales: [], activity: [], packages: [],
+    version: 2, isDemo: false, createdAt: now.toISOString(), deviceSeed: makeId(),
+    leads: [], profiles: {}, callbacks: [], sales: [], referrers: [], referrals: [], activity: [], packages: [],
     settings: { autoCopy: true },
   }
 }
@@ -127,14 +128,14 @@ function addPackage(packages: string[], name: string): string[] {
   return packages.some(item => item.toLowerCase() === name.toLowerCase()) ? packages : [...packages, name]
 }
 
-export function recordSale(workspace: Workspace, lead: Lead, packageName: string, now: Date): Workspace {
+export function recordSale(workspace: Workspace, lead: Lead, packageName: string, now: Date, packagePriceCents: number | null = null): Workspace {
   const trimmed = packageName.trim()
-  if (!trimmed) return workspace
+  if (!trimmed || (packagePriceCents !== null && !isPackagePrice(packagePriceCents))) return workspace
   // One open or completed sale per account prevents accidental double counting.
   if (workspace.sales.some(sale => sale.lead.accountNumber === lead.accountNumber && sale.stage !== 'declined')) return workspace
   const sale: Sale = {
     // ATT/non-ATT is deliberately unknown until the activation is confirmed.
-    id: makeId(), lead, packageName: trimmed, activationType: null, stage: 'credit_vetting',
+    id: makeId(), lead, packageName: trimmed, packagePriceCents, activationType: null, stage: 'credit_vetting',
     createdAt: now.toISOString(), updatedAt: now.toISOString(), activatedAt: null,
   }
   let next = addAttempt(workspace, lead, 'sale', now)
@@ -154,13 +155,14 @@ const transitions: Record<SaleStage, SaleStage[]> = {
   declined: ['credit_vetting'],
 }
 
-export function updateSaleStage(workspace: Workspace, saleId: string, stage: SaleStage, now: Date, activationType?: ActivationType): Workspace {
+export function updateSaleStage(workspace: Workspace, saleId: string, stage: SaleStage, now: Date, activationType?: ActivationType, packagePriceCents?: number | null): Workspace {
   const sale = workspace.sales.find(item => item.id === saleId)
   if (!sale || !transitions[sale.stage].includes(stage)) return workspace
   // The activation type is recorded at the moment of activation; a sale cannot become
   // an activation without it, and an unactivated sale can never carry one.
   if (stage === 'activated' && activationType !== 'ATT' && activationType !== 'Non-ATT') return workspace
-  if (stage !== 'activated' && activationType !== undefined) return workspace
+  if (stage !== 'activated' && (activationType !== undefined || packagePriceCents !== undefined)) return workspace
+  if (packagePriceCents !== undefined && packagePriceCents !== null && !isPackagePrice(packagePriceCents)) return workspace
   // Reopening a declined record must not create two simultaneous sales for one account.
   if (stage === 'credit_vetting' && workspace.sales.some(item => item.id !== saleId && item.lead.accountNumber === sale.lead.accountNumber && item.stage !== 'declined')) return workspace
   const descriptions: Record<SaleStage, string> = {
@@ -169,6 +171,7 @@ export function updateSaleStage(workspace: Workspace, saleId: string, stage: Sal
   }
   const updated: Sale = {
     ...sale, stage, updatedAt: now.toISOString(),
+    packagePriceCents: packagePriceCents === undefined ? sale.packagePriceCents : packagePriceCents,
     activatedAt: stage === 'activated' ? now.toISOString() : null,
     // Moving back out of an activation keeps the known type as a correction trail; it is never invented earlier.
     activationType: stage === 'activated' ? activationType! : sale.activationType,
@@ -176,16 +179,16 @@ export function updateSaleStage(workspace: Workspace, saleId: string, stage: Sal
   return addActivity({ ...workspace, sales: workspace.sales.map(item => item.id === saleId ? updated : item) }, sale.lead, descriptions[stage], now)
 }
 
-export function editSale(workspace: Workspace, saleId: string, packageName: string, activationType: ActivationType | null, now: Date): Workspace {
+export function editSale(workspace: Workspace, saleId: string, packageName: string, activationType: ActivationType | null, now: Date, packagePriceCents?: number | null): Workspace {
   const trimmed = packageName.trim()
   const target = workspace.sales.find(sale => sale.id === saleId)
-  if (!trimmed || !target) return workspace
+  if (!trimmed || !target || (packagePriceCents !== undefined && packagePriceCents !== null && !isPackagePrice(packagePriceCents))) return workspace
   // The type only exists after activation, so it can only be corrected on an activated sale.
   const type = target.stage === 'activated' && (activationType === 'ATT' || activationType === 'Non-ATT') ? activationType : target.activationType
   if (target.stage === 'activated' && type !== 'ATT' && type !== 'Non-ATT') return workspace
   return {
     ...workspace,
-    sales: workspace.sales.map(sale => sale.id === saleId ? { ...sale, packageName: trimmed, activationType: type, updatedAt: now.toISOString() } : sale),
+    sales: workspace.sales.map(sale => sale.id === saleId ? { ...sale, packageName: trimmed, packagePriceCents: packagePriceCents === undefined ? sale.packagePriceCents : packagePriceCents, activationType: type, updatedAt: now.toISOString() } : sale),
     packages: addPackage(workspace.packages, trimmed),
   }
 }
@@ -213,6 +216,7 @@ export function clearCategory(workspace: Workspace, category: ClearCategory): Wo
     case 'callbacks': return { ...workspace, callbacks: [] }
     case 'pipeline': return { ...workspace, sales: workspace.sales.filter(sale => sale.stage === 'activated') }
     case 'activations': return { ...workspace, sales: workspace.sales.filter(sale => sale.stage !== 'activated') }
+    case 'referrals': return { ...workspace, referrals: [], referrers: [] }
     case 'history': return { ...workspace, profiles: {}, activity: [] }
   }
 }

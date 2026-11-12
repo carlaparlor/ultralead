@@ -1,5 +1,5 @@
 import { localDayKey } from './dates'
-import { emptyProfile, type Activity, type Callback, type Lead, type Sale, type Workspace } from './types'
+import { emptyProfile, type Activity, type Callback, type Lead, type Referral, type Referrer, type Sale, type Workspace } from './types'
 import { createEmptyWorkspace } from './workspace'
 
 /** All examples are invented. IDs have deliberately non-real trailing digits. */
@@ -34,16 +34,36 @@ export function createDemoWorkspace(now = new Date()): Workspace {
     { id: 'demo-callback-1', lead: leads[0], dueAt: minutesAgo(23), note: 'Asked for a call back to discuss the data options.', createdAt: minutesAgo(1440) },
     { id: 'demo-callback-2', lead: leads[1], dueAt: minutesFromNow(90), note: 'Available later today.', createdAt: minutesAgo(65) },
   ]
-  const sale = (id: string, customer: Lead, packageName: string, activationType: Sale['activationType'], stage: Sale['stage'], minutes: number): Sale => ({
-    id, lead: customer, packageName, activationType, stage, createdAt: minutesAgo(minutes + 45),
+  const sale = (id: string, customer: Lead, packageName: string, packagePriceCents: number | null, activationType: Sale['activationType'], stage: Sale['stage'], minutes: number): Sale => ({
+    id, lead: customer, packageName, packagePriceCents, activationType, stage, createdAt: minutesAgo(minutes + 45),
     updatedAt: minutesAgo(minutes), activatedAt: stage === 'activated' ? minutesAgo(minutes) : null,
   })
   const sales: Sale[] = [
-    sale('demo-sale-1', leads[2], 'Everyday 20GB', null, 'credit_vetting', 34),
-    sale('demo-sale-2', leads[3], 'Unlimited Connect', null, 'pending_confirmation', 72),
-    sale('demo-sale-3', historical[0], 'Everyday 20GB', 'ATT', 'activated', 95),
-    sale('demo-sale-4', historical[1], 'Home Connect', 'Non-ATT', 'activated', 150),
-    sale('demo-sale-5', historical[2], 'Everyday 20GB', 'ATT', 'activated', 1740),
+    sale('demo-sale-1', leads[2], 'Everyday 20GB', 19900, null, 'credit_vetting', 34),
+    sale('demo-sale-2', leads[3], 'Unlimited Connect', 24900, null, 'pending_confirmation', 72),
+    sale('demo-sale-3', historical[0], 'Everyday 20GB', 19900, 'ATT', 'activated', 95),
+    sale('demo-sale-4', historical[1], 'Home Connect', 29900, 'Non-ATT', 'activated', 150),
+    sale('demo-sale-5', historical[2], 'Everyday 20GB', null, 'ATT', 'activated', 1740),
+  ]
+  const referrers: Referrer[] = [
+    { id: 'demo-referrer-1', name: 'Nandi Molefe', contact: '082 000 0101', createdAt: minutesAgo(4000) },
+    { id: 'demo-referrer-2', name: 'Simon Jacobs', contact: '083 000 0102', createdAt: minutesAgo(4000) },
+    { id: 'demo-referrer-3', name: 'Anele Mokoena', contact: '084 000 0103', createdAt: minutesAgo(4000) },
+  ]
+  const referral = (id: string, customer: Lead, referrerId: string, minutes: number): Referral => ({
+    id, referrerId, customerName: customer.name, customerContact: '', accountNumber: customer.accountNumber,
+    createdAt: minutesAgo(minutes), updatedAt: minutesAgo(minutes), payments: [],
+  })
+  const referrals: Referral[] = [
+    referral('demo-referral-1', historical[0], referrers[0].id, 1800),
+    referral('demo-referral-2', leads[3], referrers[0].id, 1700),
+    { ...referral('demo-referral-3', historical[1], referrers[1].id, 1900), payments: [{
+      id: 'demo-payment-1', paidAt: minutesAgo(90), voidedAt: null, saleId: sales[3].id,
+      accountNumber: historical[1].accountNumber, customerName: historical[1].name, referrerName: referrers[1].name,
+      packageName: sales[3].packageName, packagePriceCents: 29900, activatedAt: sales[3].activatedAt!, amountCents: 3000,
+    }] },
+    referral('demo-referral-4', historical[2], referrers[2].id, 2400),
+    { id: 'demo-referral-5', referrerId: referrers[1].id, customerName: 'Mpho Naidoo', customerContact: '082 000 0104', accountNumber: null, createdAt: minutesAgo(120), updatedAt: minutesAgo(120), payments: [] },
   ]
   const activity: Activity[] = [
     { id: 'demo-activity-1', at: minutesAgo(18), accountNumber: leads[4].accountNumber, name: leads[4].name, description: 'No answer · retry spaced out' },
@@ -57,6 +77,8 @@ export function createDemoWorkspace(now = new Date()): Workspace {
     leads,
     callbacks,
     sales,
+    referrers,
+    referrals,
     activity,
     packages: ['Everyday 20GB', 'Unlimited Connect', 'Home Connect'],
     profiles: {
