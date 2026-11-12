@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, CalendarClock, Check, Copy } from 'lucide-react'
+import { ArrowRight, CalendarClock, Check, Copy, Handshake } from 'lucide-react'
 import { formatDate, formatListDate, relativeDue } from '../domain/dates'
 import { readiness } from '../domain/queue'
 import type { CallOutcome, Lead, SaleStage, Workspace } from '../domain/types'
@@ -32,6 +32,8 @@ export function CustomerModal({ workspace, lead, account, now, onCopy, onNotes, 
   const state = readiness(workspace, lead, now)
   const attempts = [...(profile?.attempts ?? [])].sort((a, b) => b.at.localeCompare(a.at))
   const inDailyList = workspace.leads.some(item => item.accountNumber === account)
+  const referral = workspace.referrals.find(item => item.accountNumber === account)
+  const referrer = workspace.referrers.find(item => item.id === referral?.referrerId)
 
   return <Modal title="Customer record." eyebrow="CUSTOMER" onClose={onClose}>
     <div className="modal-body">
@@ -57,6 +59,7 @@ export function CustomerModal({ workspace, lead, account, now, onCopy, onNotes, 
 
       {sale && <div className="customer-sale"><div><span className="field-caption">SALE</span><strong>{sale.packageName}</strong></div><div><span className="field-caption">UPDATED</span><strong>{formatDate(sale.updatedAt, { day: 'numeric', month: 'short' })}</strong></div>{sale.activatedAt && <div><span className="field-caption">ACTIVATED</span><strong>{formatDate(sale.activatedAt, { day: 'numeric', month: 'short' })}</strong></div>}</div>}
 
+      {referral && referrer && <div className="customer-callback"><Handshake size={15} /><span><strong>Referred by {referrer.name}.</strong>{referral.customerContact ? ` Customer contact: ${referral.customerContact}` : ''}</span></div>}
       {callback && <div className="customer-callback"><CalendarClock size={15} /><span><strong>{relativeDue(callback.dueAt, now)}</strong> {callback.note}</span></div>}
 
       <label className="form-label form-spaced" htmlFor="customer-notes">CUSTOMER NOTES <span>AUTO-SAVED</span></label>

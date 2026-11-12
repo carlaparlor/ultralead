@@ -9,7 +9,7 @@ function scenario(): Workspace {
   const daysAgo = (days: number, hour = 10) => new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() - days, hour).toISOString()
   const base = workspaceWith(a, b, c)
   const sale = (id: string, lead = a, stage: 'credit_vetting' | 'pending_confirmation' | 'activated' | 'declined', createdAt: string, activatedAt: string | null, type: 'ATT' | 'Non-ATT' | null, packageName = 'Everyday 20GB') => ({
-    id, lead, packageName, activationType: type, stage, createdAt, updatedAt: activatedAt ?? createdAt, activatedAt,
+    id, lead, packageName, packagePriceCents: null, activationType: type, stage, createdAt, updatedAt: activatedAt ?? createdAt, activatedAt,
   })
   return {
     ...base,

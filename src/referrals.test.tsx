@@ -1,0 +1,295 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, within } from '@testing-library/react'
+import App from './App'
+import { addReferrer, markReferralPaid, saveReferral } from './domain/referrals'
+import { STORAGE_KEY } from './domain/storage'
+import { emptyProfile, makeLead } from './domain/testFixtures'
+import { createEmptyWorkspace, editSale, recordSale, updateSaleStage } from './domain/workspace'
+
+const dialog = () => within(screen.getByRole('dialog'))
+const referralRow = (name: string) => within(screen.getByRole('article', { name: `Referral for ${name}` }))
+const openReferrals = () => fireEvent.click(screen.getByRole('button', { name: /Referrals/ }))
+const cleanWorkspace = () => {
+  const workspace = createEmptyWorkspace(new Date())
+  workspace.settings.autoCopy = false
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(workspace))
+}
+
+beforeEach(() => {
+  localStorage.clear()
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } })
+})
+
+describe('referral workflow', () => {
+  it('starts a real workspace before a first referral so a later import cannot erase it as sample data', () => {
+    render(<App />)
+    openReferrals()
+    fireEvent.click(screen.getByRole('button', { name: 'ADD REFERRAL' }))
+    expect(dialog().getByText(/will not be discarded when you import/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: 'CLEAR SAMPLE & CONTINUE' }))
+    fireEvent.change(dialog().getByLabelText(/REFERRER NAME/), { target: { value: 'Real Referrer' } })
+    fireEvent.change(dialog().getByLabelText(/CUSTOMER NAME/), { target: { value: 'Real Customer' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'ADD REFERRAL' }))
+    fireEvent.click(screen.getByRole('button', { name: 'IMPORT LEADS' }))
+    fireEvent.change(dialog().getByLabelText(/PASTE YOUR LEAD LIST/), { target: { value: 'Another Person Prospect Consumer 5-987 9001010000000' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'IMPORT LEADS' }))
+    openReferrals()
+    expect(referralRow('Real Customer').getByText('Real Referrer')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).isDemo).toBe(false)
+  })
+
+  it('captures an introduction, links it to the calling desk, and pays only after activation', () => {
+    cleanWorkspace()
+    const { unmount } = render(<App />)
+    openReferrals()
+    fireEvent.click(screen.getAllByRole('button', { name: 'ADD REFERRAL' })[0])
+    fireEvent.change(dialog().getByLabelText(/REFERRER NAME/), { target: { value: 'Nandi Example' } })
+    fireEvent.change(dialog().getByLabelText(/REFERRER CONTACT/), { target: { value: '082 000 0101' } })
+    fireEvent.change(dialog().getByLabelText(/CUSTOMER NAME/), { target: { value: 'New Customer' } })
+    fireEvent.change(dialog().getByLabelText(/CUSTOMER CONTACT/), { target: { value: '082 000 0102' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'ADD REFERRAL' }))
+    expect(referralRow('New Customer').getByText('Needs account')).toBeInTheDocument()
+    expect(referralRow('New Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
+
+    fireEvent.click(referralRow('New Customer').getByRole('button', { name: /LINK ACCOUNT/ }))
+    fireEvent.change(dialog().getByLabelText(/CUSTOMER 5- ACCOUNT/), { target: { value: '5-555' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'SAVE CHANGES' }))
+    expect(referralRow('New Customer').getByText('Not in lead list')).toBeInTheDocument()
+    fireEvent.click(referralRow('New Customer').getByRole('button', { name: /ADD TO LEADS/ }))
+    expect(dialog().getByText(/not active or archived/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: /ADD TO LEADS/ }))
+    expect(referralRow('New Customer').getByText('Age review needed')).toBeInTheDocument()
+    fireEvent.click(referralRow('New Customer').getByRole('button', { name: /VERIFY AGE/ }))
+    fireEvent.click(dialog().getByRole('button', { name: /YES, UNDER 60/ }))
+    fireEvent.click(referralRow('New Customer').getByRole('button', { name: /^CALL/ }))
+    expect(screen.getByRole('heading', { name: 'New Customer' })).toBeInTheDocument()
+    expect(screen.getByText(/REFERRED BY Nandi Example/)).toBeInTheDocument()
+    expect(screen.getByText(/082 000 0102/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Made a sale/ }))
+    fireEvent.change(dialog().getByLabelText(/PACKAGE/), { target: { value: 'Everyday plan' } })
+    fireEvent.change(dialog().getByLabelText(/DEAL PRICE/), { target: { value: '200.00' } })
+    expect(dialog().getByText(/R20.00 only after activation/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: /START CREDIT VETTING/ }))
+    openReferrals()
+    expect(referralRow('New Customer').getByText('Credit vetting')).toBeInTheDocument()
+    expect(referralRow('New Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Sales pipeline/ }))
+    fireEvent.click(screen.getByRole('button', { name: /VETTING APPROVED/ }))
+    openReferrals()
+    expect(referralRow('New Customer').getByText('Awaiting confirmation')).toBeInTheDocument()
+    expect(referralRow('New Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Sales pipeline/ }))
+    fireEvent.click(screen.getByRole('button', { name: /COMPLETE ACTIVATION/ }))
+    expect(dialog().getByLabelText(/DEAL PRICE/)).toHaveValue('200.00')
+    fireEvent.click(dialog().getByLabelText(/^ATT/))
+    fireEvent.click(dialog().getByRole('button', { name: /COMPLETE ACTIVATION/ }))
+    openReferrals()
+    expect(referralRow('New Customer').getByText('Ready to pay')).toBeInTheDocument()
+    expect(referralRow('New Customer').getByText('R20.00')).toBeInTheDocument()
+    fireEvent.click(referralRow('New Customer').getByRole('button', { name: /MARK PAID/ }))
+    expect(dialog().getByText(/after you have sent the money yourself/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: 'MARK AS PAID' }))
+    expect(referralRow('New Customer').getByText('Paid', { selector: '.status-pill' })).toBeInTheDocument()
+    expect(referralRow('New Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!)
+    expect(saved.referrals[0].payments).toMatchObject([{ amountCents: 2000, packagePriceCents: 20_000, voidedAt: null }])
+
+    fireEvent.click(screen.getByRole('button', { name: /Activations/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Move New Customer back to confirmation' }))
+    expect(dialog().getByText(/recorded referral payment stays/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: 'MOVE BACK' }))
+    openReferrals()
+    expect(referralRow('New Customer').getByText('Paid · review')).toBeInTheDocument()
+    expect(referralRow('New Customer').getByText(/recorded activation is missing, has changed, or has no valid price/)).toBeInTheDocument()
+    expect(referralRow('New Customer').getByText(/Any difference is excluded from ready-to-pay totals/)).toBeInTheDocument()
+    expect(referralRow('New Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
+    fireEvent.click(referralRow('New Customer').getByRole('button', { name: 'PAYMENT HISTORY' }))
+    expect(dialog().getByText(/Everyday plan/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: /CORRECT PAID MARK/ }))
+    expect(dialog().getByText(/does not reverse a real payment/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: 'CORRECT PAID MARK' }))
+    expect(referralRow('New Customer').getByText('Awaiting confirmation')).toBeInTheDocument()
+    const corrected = JSON.parse(localStorage.getItem(STORAGE_KEY)!)
+    expect(corrected.referrals[0].payments[0].voidedAt).toBeTruthy()
+    unmount()
+    render(<App />)
+    openReferrals()
+    expect(referralRow('New Customer').getByRole('button', { name: 'PAYMENT HISTORY' })).toBeInTheDocument()
+    expect(referralRow('New Customer').getByText('Awaiting confirmation')).toBeInTheDocument()
+  })
+
+  it('handles an activated sale with no price, exact higher tier, reuse and duplicate account protection', () => {
+    const now = new Date()
+    const lead = makeLead('5-777', { name: 'Existing Customer' })
+    let ws = { ...createEmptyWorkspace(now), leads: [lead] }
+    ws.settings.autoCopy = false
+    ws = recordSale(ws, lead, 'Unpriced plan', now)
+    const saleId = ws.sales[0].id
+    ws = updateSaleStage(ws, saleId, 'pending_confirmation', now)
+    ws = updateSaleStage(ws, saleId, 'activated', now, 'Non-ATT')
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+    openReferrals()
+    fireEvent.click(screen.getAllByRole('button', { name: 'ADD REFERRAL' })[0])
+    fireEvent.change(dialog().getByLabelText(/REFERRER NAME/), { target: { value: 'First Referrer' } })
+    fireEvent.change(dialog().getByLabelText(/CUSTOMER NAME/), { target: { value: 'Existing Customer' } })
+    fireEvent.change(dialog().getByLabelText(/CUSTOMER 5- ACCOUNT/), { target: { value: '5-777' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'ADD REFERRAL' }))
+    expect(referralRow('Existing Customer').getByText('Needs price')).toBeInTheDocument()
+    expect(referralRow('Existing Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
+    fireEvent.click(referralRow('Existing Customer').getByRole('button', { name: /ADD PRICE/ }))
+    fireEvent.change(dialog().getByLabelText(/DEAL PRICE/), { target: { value: '200.001' } })
+    expect(dialog().getByRole('button', { name: 'SAVE CHANGES' })).toBeDisabled()
+    fireEvent.change(dialog().getByLabelText(/DEAL PRICE/), { target: { value: '200,01' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'SAVE CHANGES' }))
+    expect(referralRow('Existing Customer').getByText('R30.00')).toBeInTheDocument()
+    expect(referralRow('Existing Customer').getByText('Ready to pay')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'ADD REFERRAL' }))
+    fireEvent.change(dialog().getByLabelText(/WHO REFERRED THEM/), { target: { value: JSON.parse(localStorage.getItem(STORAGE_KEY)!).referrers[0].id } })
+    fireEvent.change(dialog().getByLabelText(/CUSTOMER NAME/), { target: { value: 'Same Account' } })
+    fireEvent.change(dialog().getByLabelText(/CUSTOMER 5- ACCOUNT/), { target: { value: '5-777' } })
+    expect(dialog().getByText(/already has a referral/)).toBeInTheDocument()
+    expect(dialog().getByRole('button', { name: 'ADD REFERRAL' })).toBeDisabled()
+    fireEvent.change(dialog().getByLabelText(/CUSTOMER 5- ACCOUNT/), { target: { value: '' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'ADD REFERRAL' }))
+    expect(referralRow('Same Account').getByText('First Referrer')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'First Referrer' }).closest('article')).toHaveTextContent('02')
+  })
+
+  it.each([
+    { original: 20_000, edited: '200.01', paid: 'R20.00', recalculated: 'R30.00', result: 'Possible shortfall: R10.00.' },
+    { original: 20_001, edited: '200.00', paid: 'R30.00', recalculated: 'R20.00', result: 'Possible overpayment: R10.00.' },
+    { original: 20_000, edited: '199.99', paid: 'R20.00', recalculated: 'R20.00', result: 'The reward amount is unchanged.' },
+  ])('reviews a changed package price: $result', ({ original, edited, paid, recalculated, result }) => {
+    const now = new Date()
+    const lead = makeLead('5-779', { name: 'Price Review Customer' })
+    let ws = { ...createEmptyWorkspace(now), leads: [lead] }
+    ws = addReferrer(ws, 'Price Review Referrer', '', now)
+    ws = saveReferral(ws, { referrerId: ws.referrers[0].id, customerName: lead.name, customerContact: '', accountNumber: lead.accountNumber }, now)
+    ws = recordSale(ws, lead, 'Original deal', now, original)
+    const saleId = ws.sales[0].id
+    ws = updateSaleStage(updateSaleStage(ws, saleId, 'pending_confirmation', now), saleId, 'activated', now, 'ATT')
+    ws = markReferralPaid(ws, ws.referrals[0].id, now)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+
+    const { unmount } = render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /Activations/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit activation for Price Review Customer' }))
+    expect(dialog().getByText(/Changing the package or price will flag it for review/)).toBeInTheDocument()
+    fireEvent.change(dialog().getByLabelText(/DEAL PRICE/), { target: { value: edited } })
+    fireEvent.click(dialog().getByRole('button', { name: 'SAVE CHANGES' }))
+    openReferrals()
+
+    const row = () => screen.getByRole('article', { name: 'Referral for Price Review Customer' })
+    expect(row()).toHaveTextContent('Paid · review')
+    expect(row()).toHaveTextContent(`Recalculated reward: ${recalculated} · Recorded as paid: ${paid}. ${result}`)
+    expect(row()).toHaveTextContent('additional payments or refunds cannot be recorded here')
+    expect(referralRow('Price Review Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
+    const summary = within(screen.getByRole('region', { name: 'Referral summary' }))
+    expect(summary.getByText('READY TO PAY').parentElement).toHaveTextContent('R0.00')
+    expect(summary.getByText('PAID TO DATE').parentElement).toHaveTextContent(paid)
+
+    fireEvent.click(referralRow('Price Review Customer').getByRole('button', { name: 'PAYMENT HISTORY' }))
+    expect(screen.getByRole('dialog')).toHaveTextContent(`Original deal · ${original === 20_000 ? 'R200.00' : 'R200.01'}`)
+    expect(screen.getByRole('dialog')).toHaveTextContent(paid)
+    fireEvent.click(dialog().getByRole('button', { name: 'DONE' }))
+    unmount()
+    render(<App />)
+    openReferrals()
+    expect(row()).toHaveTextContent(result)
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).referrals[0].payments).toMatchObject([{ amountCents: original === 20_000 ? 2000 : 3000, packagePriceCents: original, voidedAt: null }])
+
+    fireEvent.click(screen.getByRole('button', { name: /Activations/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Edit activation for Price Review Customer' }))
+    fireEvent.change(dialog().getByLabelText(/DEAL PRICE/), { target: { value: original === 20_000 ? '200.00' : '200.01' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'SAVE CHANGES' }))
+    openReferrals()
+    expect(referralRow('Price Review Customer').getByText('Paid', { selector: '.status-pill' })).toBeInTheDocument()
+    expect(row()).not.toHaveTextContent('Payment needs review')
+    expect(referralRow('Price Review Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
+  })
+
+  it('does not add an absent referral if another tab marks the customer not interested', () => {
+    const now = new Date()
+    let ws = createEmptyWorkspace(now)
+    ws = addReferrer(ws, 'Referrer', '', now)
+    ws = saveReferral(ws, { referrerId: ws.referrers[0].id, customerName: 'Suppressed Customer', customerContact: '', accountNumber: '5-987' }, now)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+    openReferrals()
+    fireEvent.click(referralRow('Suppressed Customer').getByRole('button', { name: 'ADD TO LEADS' }))
+    const changed = { ...ws, profiles: { '5-987': { ...emptyProfile(), doNotCall: true } } }
+    fireEvent(window, new StorageEvent('storage', { key: STORAGE_KEY, newValue: JSON.stringify(changed) }))
+    fireEvent.click(dialog().getByRole('button', { name: 'ADD TO LEADS' }))
+    expect(screen.getByText(/be marked not interested/)).toBeInTheDocument()
+    expect(referralRow('Suppressed Customer').getByText('Not interested')).toBeInTheDocument()
+    expect(referralRow('Suppressed Customer').queryByRole('button', { name: 'ADD TO LEADS' })).not.toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).leads).toEqual([])
+  })
+
+  it('paginates the referral tracker and resets pagination when searching', () => {
+    const now = new Date()
+    let ws = createEmptyWorkspace(now)
+    ws = addReferrer(ws, 'Network Person', '', now)
+    for (let index = 0; index < 35; index++) {
+      ws = saveReferral(ws, { referrerId: ws.referrers[0].id, customerName: `Referral ${String(index).padStart(2, '0')}`, customerContact: '', accountNumber: null }, new Date(now.getTime() + index * 1000))
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+    openReferrals()
+    expect(screen.getAllByRole('article', { name: /^Referral for/ })).toHaveLength(30)
+    fireEvent.click(screen.getByRole('button', { name: 'Next referrals page' }))
+    expect(screen.getAllByRole('article', { name: /^Referral for/ })).toHaveLength(5)
+    fireEvent.change(screen.getByLabelText('Search referrals'), { target: { value: 'Referral 34' } })
+    expect(referralRow('Referral 34').getByText('Referral 34')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Next referrals page' })).not.toBeInTheDocument()
+  })
+
+  it('warns when a paid mark cannot be saved and keeps it available for backup in memory', () => {
+    const now = new Date()
+    const lead = makeLead('5-889', { name: 'Storage Customer' })
+    let ws = { ...createEmptyWorkspace(now), leads: [lead] }
+    ws = addReferrer(ws, 'Storage Referrer', '', now)
+    ws = saveReferral(ws, { referrerId: ws.referrers[0].id, customerName: lead.name, customerContact: '', accountNumber: lead.accountNumber }, now)
+    ws = recordSale(ws, lead, 'Deal', now, 20_000)
+    const id = ws.sales[0].id
+    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', now), id, 'activated', now, 'ATT')
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+    openReferrals()
+    const failedSave = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('quota') })
+    try {
+      fireEvent.click(referralRow('Storage Customer').getByRole('button', { name: /MARK PAID/ }))
+      fireEvent.click(dialog().getByRole('button', { name: 'MARK AS PAID' }))
+      expect(screen.getByText(/Payment marked paid in this session only/)).toBeInTheDocument()
+      expect(screen.getByRole('alert')).toHaveTextContent('Browser storage is full or unavailable')
+      expect(referralRow('Storage Customer').getByText('Paid', { selector: '.status-pill' })).toBeInTheDocument()
+      expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).referrals[0].payments).toEqual([])
+    } finally { failedSave.mockRestore() }
+  })
+
+  it('refuses a stale payment confirmation after another tab changes the price', () => {
+    const now = new Date()
+    const lead = makeLead('5-888', { name: 'Changed Customer' })
+    let ws = { ...createEmptyWorkspace(now), leads: [lead] }
+    ws.settings.autoCopy = false
+    ws = addReferrer(ws, 'Referrer', '', now)
+    ws = saveReferral(ws, { referrerId: ws.referrers[0].id, customerName: lead.name, customerContact: '', accountNumber: lead.accountNumber }, now)
+    ws = recordSale(ws, lead, 'Deal', now, 20_000)
+    const saleId = ws.sales[0].id
+    ws = updateSaleStage(updateSaleStage(ws, saleId, 'pending_confirmation', now), saleId, 'activated', now, 'ATT')
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+    openReferrals()
+    fireEvent.click(referralRow('Changed Customer').getByRole('button', { name: /MARK PAID/ }))
+    const changed = editSale(ws, saleId, 'Deal', 'ATT', new Date(now.getTime() + 1000), 20_001)
+    fireEvent(window, new StorageEvent('storage', { key: STORAGE_KEY, newValue: JSON.stringify(changed) }))
+    fireEvent.click(dialog().getByRole('button', { name: 'MARK AS PAID' }))
+    expect(screen.getByText(/Payment not recorded/)).toBeInTheDocument()
+    expect(referralRow('Changed Customer').getByText('R30.00')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).referrals[0].payments).toEqual([])
+  })
+})

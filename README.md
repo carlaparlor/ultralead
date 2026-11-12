@@ -1,6 +1,6 @@
 # ultralead+
 
-A minimal, local-first calling desk for moving through leads, remembering conversations, and tracking sales through to activation. No account, database, API key, or separate backend is required.
+A minimal, local-first calling desk for moving through leads, remembering conversations, tracking sales through to activation, and recording referral rewards. No account, database, API key, or separate backend is required.
 
 ## Install on Windows (no Node.js required)
 
@@ -22,7 +22,7 @@ npm run dev
 
 Open the local address printed in the terminal (normally `http://localhost:5173`). To run the desktop shell during development, install Rust and the Windows build prerequisites, then use `npm run desktop:dev`. Build an installer with `npm run desktop:build`.
 
-The first visit contains clearly labelled **sample data**. Choose **Clear sample data**, or simply import your own leads: the first real import replaces the entire sample workspace, even if you select “add to current list”. Your real data is never mixed with the sample records.
+The first visit contains clearly labelled **sample data**, including sample referrals. When you add your first referral from the sample workspace, the app offers to clear the sample and start fresh so your real referral is not lost on a later import. You can also choose **Clear sample data**, or simply import your own leads: the first real import replaces the entire sample workspace, including any changes made to it, even if you select “add to current list”. Your real data is never mixed with the sample records.
 
 For a production build, run `npm run build`, then `npm run preview` to try it locally. The `dist` folder can also be hosted as a static site at the root of an HTTPS origin; no application server is needed. Use the same address and browser each day so you see the same locally saved workspace.
 
@@ -33,7 +33,8 @@ For a production build, run `npm run build`, then `npm run preview` to try it lo
 3. On the calling desk, everything you need for the call is on one screen: the next lead, the account number, the notes, and the outcome buttons. Copy the displayed **5- account number** and paste it into your existing system. With **Auto-copy next account** on, the next number is copied when you import, skip, select a lead, or log an outcome, subject to browser permission. The first lead on a later page load can be copied with the **Copy** button or `V`.
 4. After the call, choose **No answer**, **Not interested**, **Callback**, or **Made a sale**. Customer notes are saved as you type and follow the account across imports. The notebook button (notes & history) opens a customer's full record — notes, every logged call and their place in the pipeline — from **All leads**, **Callbacks**, **Sales pipeline** and **Activations**, so notes stay reachable at any stage, including after a sale leaves the calling queue.
 5. A sale starts in **Credit vetting**. Mark it approved to move it to **Awaiting confirmation**. Only choose **Complete activation** after the confirmations department has finished. **ATT or non-ATT is chosen at that moment** — the pipeline shows "at activation" until then, because the split is a result, not a guess. The Activations page tracks the package and type, with **all-time, today, and this month** filters. Notes remain editable from any of those stages through the customer record. Declined vetting can be reopened; completed activations can be moved back if necessary, and the recorded type can be corrected from the activations list.
-6. Deals change: type any package name while recording a sale, or manage package suggestions in **Data & settings**. The package is known from the start; the activation type is not. Removing a suggestion does not alter existing sales.
+6. Deals change: type any package name and, if known, its actual price in rand while recording a sale, or manage package suggestions in **Data & settings**. The activation type is not known until activation. Removing a suggestion does not alter existing sales.
+7. Use **Referrals** to record who introduced a customer, follow their progress, and track what you owe after activation. Payments are made outside the app and marked paid manually.
 
 The app does not log in to your employer's system, place calls, perform credit checks, or contact the confirmations department. Those steps stay in your existing system; ultralead+ records your progress.
 
@@ -51,6 +52,16 @@ A row needs a name before a `5-` followed by digits. A 13-digit customer ID and 
 - **Active**, **Archived**, and an explicit **60+** status are excluded, case-insensitively. Known customers aged **60 or older** are also excluded. A matching existing lead and callback are removed from calling; existing sales, activations, notes, and history are retained.
 - Age is inferred from the first six digits (`YYMMDD`) of a 13-digit South African-style ID. Missing, malformed, impossible, or future birth dates are held for **age review** and cannot enter the automatic queue until you explicitly verify that the customer is under 60. A newly imported row must be verified again if its age is still unknown.
 - **Important limitation:** the ID's two-digit year does not encode a century. The app assumes the most recent century consistent with the current year; it cannot reliably distinguish a person over 100 from a much younger person with the same `YYMMDD`. It does not validate an ID checksum. Verify age in your source system whenever there is doubt; the filter is not proof of age.
+
+### Referrals and payments
+
+1. Open **Referrals → Add referral**. Choose an existing referrer or add a person with an optional contact. Enter the customer's name and, optionally, their contact and `5-` account. An introduction can be captured before an account is known; edit it later to link the account. One customer account can be attributed to only one referral.
+2. Link to a customer already in the workspace, or enter an account that will be imported later. If the account is not in the lead list, **Add to leads** creates a lead with an unknown age. Check the customer's status in your calling system and verify their age before calling. Existing exclusions, do-not-call decisions, callbacks and queue protections still apply. Referrals survive daily list replacement; a referral on its own does not make an unlinked person callable.
+3. Record the actual **deal price in rand** when entering/editing a sale, or at activation. Package names and suggestions do not contain reliable prices, so they are never used to guess one. An existing activation without a price shows **Needs price** and cannot be marked paid until the price is entered. Older workspaces are migrated with prices unknown.
+4. A reward becomes **Ready to pay** only after the linked sale passes vetting and confirmation and is activated: **R20 for a package costing R200.00 or less**, and **R30 for a package costing more than R200.00**. Exact cents are used, so R200.01 earns R30. Declined, unactivated or unpriced sales are not payable. The tracker shows the amount due and a per-referrer total.
+5. Send the money yourself, then choose **Mark paid** and confirm. The app does **not** send payments, contact people, or store banking details. If browser storage fails, the app warns that the mark is only in memory; export a backup before leaving. Payment history records the recipient, customer, sale, price, activation and amount. If an activation is reversed, removed or its package/price is changed after payment, the record remains paid and is flagged for review; it is never automatically paid twice. For a price change on the same activation, the tracker compares the recalculated reward with the recorded payment and shows any possible difference. This difference is not included in ready-to-pay totals. Additional payments and refunds cannot be recorded in the app and must be tracked separately. Use **Payment history → Correct paid mark** only if the mark was entered in error: this does not reverse a real transfer and may make the referral due again.
+
+Referrals, contacts and payment history are stored in the same private browser workspace and backups as the rest of the data. Tabs are last-write-wins, so check the current records before paying and do not treat this as a shared payment ledger. An individual referral with payment history is retained to avoid losing that record; the explicitly confirmed **Clear referrals & payment history** action removes all of it. On upgrade, the old workspace is migrated and removed only after the new copy saves successfully. Close old app tabs first: older app versions do not synchronize with the upgraded workspace.
 
 ### Insights
 
@@ -94,15 +105,16 @@ Individual leads, callbacks, sales, and activations have their own delete contro
 | Lead list | Current daily list | Callbacks, pipeline, activations, notes and history |
 | Callbacks | Scheduled callbacks | Leads, sales, activations, notes and history |
 | Sales pipeline | Vetting, pending and declined sales | Completed activations and other records |
-| Activations | Completed activations | Pipeline and other records |
-| Customer notes & call history | Notes, attempts, exclusion and not-interested flags, recent activity | Leads, callbacks and sales |
+| Activations | Completed activations | Pipeline, referrals and payment history; paid referrals are flagged for review |
+| Referrals & payment history | All referrals, referrers and their payment history | Leads, callbacks, sales, activations and notes |
+| Customer notes & call history | Notes, attempts, exclusion and not-interested flags, recent activity | Leads, callbacks, sales and referrals |
 
 A retained callback can still become callable even if its lead has been removed from the daily list. Deleting a callback can return its lead to the queue. Deleting a sale leaves its historical attempt in place so the customer is not immediately called again; if appropriate, use **Return to queue** on the lead. Clearing customer history removes do-not-call flags and can make previously suppressed leads eligible again, so use it carefully.
 
 ## Backups and privacy
 
 - Data is stored in **this browser's localStorage**, scoped to the exact site origin (including port). It is not sent to a backend or shared with coworkers or other devices. The app does not use third-party analytics.
-- Browser storage and exported JSON backups are **not encrypted**. Backups include customer names, account numbers, IDs, notes, and sales. Use a trusted device, secure backups, and follow your employer's customer-data and privacy policies.
+- Browser storage and exported JSON backups are **not encrypted**. Backups include customer names, account numbers, IDs, notes, sales, referrer contacts and payment history. Do not enter bank details. Use a trusted device, secure backups, and follow your employer's customer-data and privacy policies.
 - Clearing browser/site data, using private browsing, changing browsers or addresses, or hitting storage limits can lose access to saved work. A storage failure is shown in the app. Export a backup regularly using **Data & settings → Export backup**; use **Restore backup** to validate and replace the current workspace with one you previously exported.
 - Tabs on the same browser and origin listen for each other's changes, but concurrent edits are last-write-wins. This is not a multi-user database. Keep a backup before making large changes.
 - Browser storage has finite, browser-dependent capacity. The lead table is paginated and queue lookups are indexed, but very large histories or a shared team deployment should use a more capable storage service.
