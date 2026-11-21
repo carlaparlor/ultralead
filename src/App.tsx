@@ -21,9 +21,12 @@ import { formatRand } from './domain/money'
 import { activePayment, addReferralToLeads, addReferrer, editReferrer, markReferralPaid, removeReferral, removeReferrer, saveReferral, voidReferralPayment, type ReferralState } from './domain/referrals'
 import { findLead, getSmartQueue, readiness } from './domain/queue'
 import { parseBackup } from './domain/storage'
+import { hashCode, loadAuthState, saveAuthState, type AuthState, verifyCode } from './domain/auth'
 import { applyImport, clearCategory, createEmptyWorkspace, editSale, findCustomerLead, pruneExcluded, recordNoAnswer, recordNotInterested, recordSale, removeCallback, removeLead, removeSale, resetToQueue, saveCallback, saveNotes, updateSaleStage, verifyAge } from './domain/workspace'
 import type { Callback, ClearCategory, Lead, Referral, Referrer, Sale, SaleStage, View, Workspace } from './domain/types'
 import { useWorkspace } from './hooks/useWorkspace'
+import { AUTH_STORAGE_KEY } from './domain/auth'
+import { AuthGate } from './components/AuthGate'
 
 type ModalState =
   | { type: 'import' }
@@ -66,6 +69,9 @@ export default function App() {
   const [selection, setSelection] = useState<{ account: string; manual: boolean } | null>(null)
   const [modal, setModal] = useState<ModalState>(null)
   const [toast, setToast] = useState('')
+  const [auth, setAuth] = useState<AuthState>(() => loadAuthState())
+  /** Locking on startup only works once an unlock code exists — never lock anyone out. */
+  const locked = auth.locked || (auth.lockOnStartup && !!auth.unlockCodeHash)
   const [importMode, setImportMode] = useState<'replace' | 'append'>(readImportMode)
   const [importText, setImportText] = useState('')
   const [undoImport, setUndoImport] = useState<(() => void) | null>(null)
@@ -101,7 +107,7 @@ export default function App() {
     const at = new Date()
     const preview = parseLeads(text, at)
     if (!preview.leads.length && !preview.excluded.length) {
-      notify('That paste had no lead rows. Each row needs a name and a 5- account number.')
+      notify('That paste had no lead rows. Each row needs a name and a 1-, 3- or 5- account number.')
       return
     }
     const before = workspaceRef.current
@@ -157,7 +163,7 @@ export default function App() {
   // Pasting a lead list anywhere on the desk imports it immediately. Fields keep normal paste behaviour.
   useEffect(() => {
     const onPaste = (event: ClipboardEvent) => {
-      if (modalOpenRef.current) return
+      if (locked || modalOpenRef.current) return
       const target = event.target as HTMLElement | null
       if (target?.closest?.('input, textarea, select, [contenteditable="true"]')) return
       const text = event.clipboardData?.getData('text/plain') ?? ''
@@ -173,7 +179,7 @@ export default function App() {
     if (view !== 'overview' || modal || !lead) return
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
-      if (event.altKey || event.ctrlKey || event.metaKey || target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '')) return
+      if (event.altKey || event.ctrlKey || event.metaKey || locked || target?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName ?? '')) return
       if (event.key === 'ArrowRight') { event.preventDefault(); cycle(1); return }
       if (event.key === 'ArrowLeft') { event.preventDefault(); cycle(-1); return }
       const key = event.key.toLowerCase()
@@ -188,6 +194,25 @@ export default function App() {
     // The current render's workspace and queue are intentionally captured by the handler.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, modal, lead, workspace, queue])
+
+  // Persist the lock state so it survives a reload, and keep other tabs in step.
+  useEffect(() => {
+    saveAuthState(auth)
+  }, [auth])
+
+  useEffect(() => {
+    function onAuthStorage(event: StorageEvent) {
+      if (event.key !== AUTH_STORAGE_KEY || !event.newValue) return
+      try {
+        const incoming = JSON.parse(event.newValue) as AuthState
+        if (typeof incoming.locked === 'boolean') setAuth(incoming)
+      } catch { /* ignore foreign writes */ }
+    }
+    window.addEventListener('storage', onAuthStorage)
+    return () => window.removeEventListener('storage', onAuthStorage)
+  }, [])
+
+  const onUnlock = () => setAuth(previous => ({ ...previous, locked: false }))
 
   const onImport = (preview: ImportPreview, mode: 'replace' | 'append') => {
     const next = applyImport(workspace, preview, mode, new Date())
@@ -315,7 +340,7 @@ export default function App() {
   } })
 
   return <div className="app-shell">
-    <div className="app-layout" inert={modal ? true : undefined}>
+    <div className="app-layout" inert={(locked || modal) ? true : undefined}>
     <a className="skip-link" href="#main-content">Skip to content</a>
     <Sidebar view={view} onNavigate={setView} workspace={workspace} mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
     <div className="app-main">
@@ -330,10 +355,11 @@ export default function App() {
         {view === 'activations' && <ActivationsView workspace={workspace} now={now} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onUndo={sale => setModal({ type: 'confirm', title: 'Move back to confirmation?', description: `${sale.lead.name}'s sale will no longer count as an activation until it is completed again.${referralImpact(sale)}`, confirmLabel: 'MOVE BACK', action: () => applyStage(sale, 'pending_confirmation', 'Moved back to confirmation.') })} onRemove={onRemoveSale} onOpenCustomer={openCustomer} />}
         {view === 'referrals' && <ReferralsView workspace={workspace} now={now} onAdd={onAddReferral} onEdit={referral => setModal({ type: 'referral', referral })} onRemove={onRemoveReferral} onAddToLeads={onAddReferralToLeads} onVerify={onVerify} onCall={onCall} onEditSale={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onPay={onPayReferral} onHistory={referral => setModal({ type: 'referral-history', referralId: referral.id })} onEditReferrer={referrer => setModal({ type: 'referrer', referrer })} onRemoveReferrer={onRemoveReferrer} onOpenCustomer={openCustomer} />}
         {view === 'insights' && <InsightsView workspace={workspace} now={now} />}
-        {view === 'settings' && <SettingsView workspace={workspace} onAutoCopy={onAutoCopy} onAddPackage={name => { const trimmed = name.trim(); if (trimmed) setWorkspace(previous => previous.packages.some(item => item.toLowerCase() === trimmed.toLowerCase()) ? previous : { ...previous, packages: [...previous.packages, trimmed] }) }} onRemovePackage={name => setWorkspace(previous => ({ ...previous, packages: previous.packages.filter(item => item !== name) }))} onClear={onClear} onExport={onExport} onRestore={file => { void onRestore(file) }} />}
+        {view === 'settings' && <SettingsView workspace={workspace} onAutoCopy={onAutoCopy} onAddPackage={name => { const trimmed = name.trim(); if (trimmed) setWorkspace(previous => previous.packages.some(item => item.toLowerCase() === trimmed.toLowerCase()) ? previous : { ...previous, packages: [...previous.packages, trimmed] }) }} onRemovePackage={name => setWorkspace(previous => ({ ...previous, packages: previous.packages.filter(item => item !== name) }))} onClear={onClear} onExport={onExport} onRestore={file => { void onRestore(file) }} lockOnStartup={auth.lockOnStartup} onToggleLockOnStartup={() => { if (!auth.unlockCodeHash) { notify('Set an unlock code before the desk can lock when the app opens.'); return } setAuth(previous => ({ ...previous, lockOnStartup: !previous.lockOnStartup })) }} unlockCodeConfigured={!!auth.unlockCodeHash} onSetUnlockCode={async (code: string) => { const hash = await hashCode(code); setAuth(previous => ({ ...previous, unlockCodeHash: hash })) }} onChangeUnlockCode={async (current: string, next: string) => { if (auth.unlockCodeHash === null || !(await verifyCode(current, auth.unlockCodeHash))) { notify('Current code is wrong.'); return } const hash = await hashCode(next); setAuth(previous => ({ ...previous, unlockCodeHash: hash })) }} onRemoveUnlockCode={async (current: string) => { if (auth.unlockCodeHash === null || !(await verifyCode(current, auth.unlockCodeHash))) { notify('Current code is wrong.'); return } setAuth(previous => ({ ...previous, unlockCodeHash: null, lockOnStartup: false })) }} onLockDeskNow={() => { if (!auth.unlockCodeHash) { notify('Set an unlock code before locking the desk.'); return } setAuth(previous => ({ ...previous, locked: true })) }} />}
       </main>
     </div>
     </div>
+    {locked && <AuthGate unlockCodeHash={auth.unlockCodeHash} onUnlock={onUnlock} />}
     {toast && <div className="toast" role="status"><span className="tiny-dot" />{toast}{undoImport && <button className="toast-action" onClick={undoImport}>UNDO</button>}<button onClick={() => { setToast(''); setUndoImport(null) }} aria-label="Dismiss notification"><X size={14} /></button></div>}
     {modal?.type === 'import' && <ImportModal now={now} isDemo={workspace.isDemo} text={importText} onText={setImportText} mode={importMode} onMode={rememberImportMode} onClose={() => setModal(null)} onImport={onImport} />}
     {modal?.type === 'callback' && <CallbackModal key={`${modal.lead.accountNumber}-${modal.existing?.id ?? 'new'}`} lead={modal.lead} existing={modal.existing} now={now} onClose={() => setModal(null)} onSave={(dueAt, note) => { const next = saveCallback(workspace, modal.lead, dueAt, note, new Date(), modal.recordCall); setModal(null); if (modal.recordCall) advanceAfter(next, 'Callback scheduled.'); else { setWorkspace(next); notify('Callback updated.') } }} />}

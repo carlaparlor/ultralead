@@ -608,6 +608,47 @@ input[type='datetime-local'] { color-scheme: dark; }
 .toast button { display: grid; place-items: center; border: 0; padding: 0; background: transparent; color: #c6d4c1; margin-left: 5px; }
 .toast .toast-action { display: inline-flex; border: 1px solid #a9c9a0; background: #4a5c44; color: #f2f8ee; font-size: 9px; font-weight: 700; letter-spacing: .05em; padding: 5px 9px; margin-left: 4px; }
 .toast .toast-action:hover { background: #5b7053; }
+
+/* Desk lock screen */
+.auth-gate {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #161918;
+  padding: 24px;
+}
+.auth-card {
+  width: min(100%, 460px);
+  background: #2a2e2a;
+  border: 1px solid #626b5e;
+  border-radius: 5px;
+  box-shadow: var(--lift-3);
+  padding: 32px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.auth-symbol { color: #eda79e; }
+.auth-heading { font-size: 22px; line-height: 1.1; margin: 0; color: #edf1ea; }
+.auth-intro { color: #b7c0b4; font-size: 11px; line-height: 1.7; margin: 0; }
+.auth-tabs { display: flex; gap: 6px; margin: 4px 0 8px; }
+.auth-tab {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 10px;
+  border: 1px solid #414a3f; background: #242724; color: #a6b2a2;
+  font-size: 9px; font-weight: 700; letter-spacing: .02em; border-radius: 3px;
+}
+.auth-tab:hover { background: #2e332d; color: #e3ebdf; }
+.auth-tab.is-on { background: #3b473a; border-color: #718868; color: #eef5e9; }
+.auth-tab svg { flex: 0 0 auto; }
+.auth-error { display: flex; gap: 8px; align-items: flex-start; color: #f1b6aa; font-size: 10px; line-height: 1.5; margin: 2px 0 8px; }
+.auth-error svg { flex: 0 0 auto; margin-top: 2px; color: #f1b6aa; }
+.auth-note { color: #9ba699; font-size: 9px; line-height: 1.6; margin: 0 0 10px; }
+.auth-note strong { color: #cddbc9; }
 /* ---------------------------------------------------------------------------
    Depth
    A single light source sits above the page: raised surfaces get a top highlight

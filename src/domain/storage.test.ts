@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createDemoWorkspace } from './demo'
 import { createLocalWorkspaceRepository, isWorkspace, LEGACY_STORAGE_KEY, loadWorkspace, parseBackup, STORAGE_KEY } from './storage'
-import { makeLead, NOW, workspaceWith } from './testFixtures'
+import { emptyProfile, makeLead, NOW, workspaceWith } from './testFixtures'
 
 describe('storage and backups', () => {
   beforeEach(() => localStorage.clear())
@@ -103,5 +103,22 @@ describe('storage and backups', () => {
     const result = loadWorkspace(storage, NOW)
     expect(result.canSave).toBe(false)
     expect(result.warning).toContain('unavailable')
+  })
+  it('accepts 1-, 3- and 5- account numbers in leads, profiles and referrals', () => {
+    expect(isWorkspace(workspaceWith(makeLead('1-1')))).toBe(true)
+    expect(isWorkspace(workspaceWith(makeLead('3-2')))).toBe(true)
+    expect(isWorkspace(workspaceWith(makeLead('5-3')))).toBe(true)
+    expect(isWorkspace(workspaceWith(makeLead('6-4')))).toBe(false)
+    expect(isWorkspace({ ...workspaceWith(makeLead('1-1')), profiles: { '6-9': emptyProfile() } })).toBe(false)
+    const withReferral = {
+      ...workspaceWith(makeLead('3-1')),
+      referrers: [{ id: 'ref-1', name: 'Person', contact: '', createdAt: NOW.toISOString() }],
+      referrals: [{
+        id: 'r-1', referrerId: 'ref-1', customerName: 'Customer', customerContact: '',
+        accountNumber: '3-1', createdAt: NOW.toISOString(), updatedAt: NOW.toISOString(), payments: [],
+      }],
+    }
+    expect(isWorkspace(withReferral)).toBe(true)
+    expect(isWorkspace({ ...withReferral, referrals: [{ ...withReferral.referrals[0], accountNumber: '6-1' }] })).toBe(false)
   })
 })

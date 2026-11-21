@@ -40,8 +40,19 @@ describe('lead import', () => {
     const preview = parseLeads('No ID Prospect Consumer 5-1 2026-01-01\nBad Date Prospect Consumer 5-2 8406778994089 2026-01-01\nMissing Account Prospect Consumer\n5-999 9001010000000', NOW)
     expect(preview.leads).toHaveLength(2)
     expect(preview.needsAgeReview).toBe(2)
-    expect(preview.invalidRows).toEqual([{ line: 3, reason: 'Missing a 5- account number.' }, { line: 4, reason: 'Missing a customer name.' }])
+    expect(preview.invalidRows).toEqual([{ line: 3, reason: 'Missing a 1-, 3- or 5- account number.' }, { line: 4, reason: 'Missing a customer name.' }])
   })
+  it('accepts accounts starting with 1-, 3- or 5-', () => {
+    const preview = parseLeads([
+      'One Person Prospect Consumer 1-1 9001010000000 2026-01-01',
+      'Three Person Prospect Consumer 3-2 9001010000000 2026-01-01',
+      'Five Person Prospect Consumer 5-3 9001010000000 2026-01-01',
+      'Six Person Prospect Consumer 6-4 9001010000000 2026-01-01',
+    ].join('\n'), NOW)
+    expect(preview.leads.map(lead => lead.accountNumber).sort()).toEqual(['1-1', '3-2', '5-3'])
+    expect(preview.invalidRows.map(row => row.reason)).toContain('Missing a 1-, 3- or 5- account number.')
+  })
+
   it.each([
     ['Jane Prospect Consumer 5-1 9001010000000\nJane Active Consumer 5-1 9001010000000'],
     ['Jane Active Consumer 5-1 9001010000000\nJane Prospect Consumer 5-1 9001010000000'],

@@ -49,9 +49,9 @@ export function parseLeads(text: string, now: Date): ImportPreview {
   let duplicates = 0
 
   for (const row of rows) {
-    const account = /\b5-\d+\b/i.exec(row.text)
+    const account = /\b[135]-\d+\b/i.exec(row.text)
     if (!account || account.index === undefined) {
-      invalidRows.push({ line: row.line, reason: 'Missing a 5- account number.' })
+      invalidRows.push({ line: row.line, reason: 'Missing a 1-, 3- or 5- account number.' })
       continue
     }
     const beforeAccount = row.text.slice(0, account.index)

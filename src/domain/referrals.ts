@@ -1,7 +1,7 @@
 import { exclusionReason } from './import'
 import { referralRewardCents } from './money'
 import { createQueueIndex, readiness, type QueueIndex, type Readiness } from './queue'
-import { makeId, type Lead, type Referral, type ReferralPayment, type Referrer, type Sale, type Workspace } from './types'
+import { ACCOUNT_PATTERN, makeId, type Lead, type Referral, type ReferralPayment, type Referrer, type Sale, type Workspace } from './types'
 
 export type ReferralStatus = 'needs_link' | 'not_in_list' | 'age_review' | 'excluded' | 'not_interested' | 'sale_missing'
   | 'awaiting_sale' | 'credit_vetting' | 'pending_confirmation' | 'declined' | 'needs_price' | 'ready' | 'paid' | 'paid_review'
@@ -136,7 +136,7 @@ export function saveReferral(workspace: Workspace, details: ReferralDetails, now
   const accountNumber = details.accountNumber?.trim().toUpperCase() || null
   if ((id && !previous) || !workspace.referrers.some(referrer => referrer.id === details.referrerId)
     || !validName(details.customerName) || !validContact(details.customerContact)
-    || (accountNumber !== null && !/^5-\d+$/.test(accountNumber))
+    || (accountNumber !== null && !ACCOUNT_PATTERN.test(accountNumber))
     || (accountNumber !== null && workspace.referrals.some(referral => referral.id !== id && referral.accountNumber === accountNumber))) return workspace
   // A recorded payment cannot be silently reassigned. Corrected snapshots retain their original identity.
   if (previous && activePayment(previous) && (previous.referrerId !== details.referrerId || previous.accountNumber !== accountNumber)) return workspace

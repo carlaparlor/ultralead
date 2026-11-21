@@ -1,7 +1,7 @@
 import { createDemoWorkspace } from './demo'
 import { isPackagePrice, referralRewardCents } from './money'
 import { createEmptyWorkspace, pruneExcluded } from './workspace'
-import type { Workspace } from './types'
+import { ACCOUNT_PATTERN, type Workspace } from './types'
 
 // A separate key prevents an older tab from overwriting the new referral/payment data.
 export const STORAGE_KEY = 'ultralead-plus.workspace.v2'
@@ -20,7 +20,7 @@ const hasUnique = (items: unknown[], key: (item: Record<string, unknown>) => unk
 
 function isLead(value: unknown): boolean {
   if (!isObject(value)) return false
-  return isString(value.accountNumber) && /^5-\d+$/.test(value.accountNumber)
+  return isString(value.accountNumber) && ACCOUNT_PATTERN.test(value.accountNumber)
     && isString(value.name) && !!value.name.trim() && isString(value.customerId)
     && (value.customerId === '' || /^\d{13}$/.test(value.customerId))
     && isString(value.sourceStatus) && (value.listDate === null || isString(value.listDate))
@@ -47,7 +47,7 @@ function hasValidCore(value: unknown, version: 1 | 2): value is Record<string, u
   if (!value.activity.every(item => isObject(item) && isString(item.id) && isDate(item.at) && isString(item.accountNumber) && isString(item.name) && isString(item.description))) return false
   if (!value.packages.every(isString)) return false
   for (const [account, profile] of Object.entries(value.profiles)) {
-    if (!/^5-\d+$/.test(account) || !isObject(profile) || !isString(profile.notes) || typeof profile.doNotCall !== 'boolean'
+    if (!ACCOUNT_PATTERN.test(account) || !isObject(profile) || !isString(profile.notes) || typeof profile.doNotCall !== 'boolean'
       || !(profile.excludedReason === null || ['active', 'archived', 'age_60_plus'].includes(String(profile.excludedReason)))
       || !isNullableDate(profile.queueResetAt) || !Array.isArray(profile.attempts)
       || !profile.attempts.every(attempt => isObject(attempt) && isString(attempt.id) && isDate(attempt.at)
@@ -69,7 +69,7 @@ export function isWorkspace(value: unknown): value is Workspace {
     if (!isObject(referral) || !isNonEmpty(referral.id) || !referrerIds.has(referral.referrerId)
       || !isNonEmpty(referral.customerName) || referral.customerName.trim().length > 120
       || !isString(referral.customerContact) || referral.customerContact.length > 160
-      || !(referral.accountNumber === null || (isString(referral.accountNumber) && /^5-\d+$/.test(referral.accountNumber)))
+      || !(referral.accountNumber === null || (isString(referral.accountNumber) && ACCOUNT_PATTERN.test(referral.accountNumber)))
       || !isDate(referral.createdAt) || !isDate(referral.updatedAt) || !Array.isArray(referral.payments)) return false
     if (isString(referral.accountNumber)) {
       if (linkedAccounts.has(referral.accountNumber)) return false
@@ -79,7 +79,7 @@ export function isWorkspace(value: unknown): value is Workspace {
     for (const payment of referral.payments) {
       if (!isObject(payment) || !isNonEmpty(payment.id) || paymentIds.has(payment.id) || !isDate(payment.paidAt)
         || !isNullableDate(payment.voidedAt) || !isNonEmpty(payment.saleId) || !isString(payment.accountNumber)
-        || !/^5-\d+$/.test(payment.accountNumber) || (payment.voidedAt === null && payment.accountNumber !== referral.accountNumber)
+        || !ACCOUNT_PATTERN.test(payment.accountNumber) || (payment.voidedAt === null && payment.accountNumber !== referral.accountNumber)
         || !isNonEmpty(payment.customerName) || !isNonEmpty(payment.referrerName) || !isNonEmpty(payment.packageName)
         || !isPackagePrice(payment.packagePriceCents) || !isDate(payment.activatedAt)
         || payment.amountCents !== referralRewardCents(payment.packagePriceCents)) return false

@@ -3,6 +3,9 @@ export type CallOutcome = 'no_answer' | 'not_interested' | 'callback' | 'sale'
 export type SaleStage = 'credit_vetting' | 'pending_confirmation' | 'activated' | 'declined'
 export type ActivationType = 'ATT' | 'Non-ATT'
 
+/** Customer account numbers start with `1-`, `3-` or `5-`, followed by digits. */
+export const ACCOUNT_PATTERN = /^[135]-\d+$/
+
 /** A lead is a snapshot of one row in the daily calling list. */
 export interface Lead {
   accountNumber: string
@@ -80,7 +83,7 @@ export interface ReferralPayment {
   amountCents: number
 }
 
-/** A referral can be captured before its customer has a 5- account. */
+/** A referral can be captured before its customer has a 1-, 3- or 5- account. */
 export interface Referral {
   id: string
   referrerId: string

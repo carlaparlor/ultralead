@@ -30,7 +30,7 @@ For a production build, run `npm run build`, then `npm run preview` to try it lo
 
 1. Log in to your existing calling system as usual. Copy your rows, then **paste anywhere on the calling desk**. The list imports the moment you paste; nothing else to click. Use the **REPLACE / ADD** switch next to the paste field to say whether the paste starts today's list or merges into it — the choice is remembered, so it is a one-step import from then on. A short **UNDO** button appears in the notification if you paste the wrong thing.
 2. Prefer to check the counts before importing? Choose **Review first** on the desk, or **Import leads** in the top bar. Replacing the list does **not** erase callbacks, sales, activations, notes, or call history.
-3. On the calling desk, everything you need for the call is on one screen: the next lead, the account number, the notes, and the outcome buttons. Copy the displayed **5- account number** and paste it into your existing system. With **Auto-copy next account** on, the next number is copied when you import, skip, select a lead, or log an outcome, subject to browser permission. The first lead on a later page load can be copied with the **Copy** button or `V`.
+3. On the calling desk, everything you need for the call is on one screen: the next lead, the account number, the notes, and the outcome buttons. Copy the displayed **account number** and paste it into your existing system. With **Auto-copy next account** on, the next number is copied when you import, skip, select a lead, or log an outcome, subject to browser permission. The first lead on a later page load can be copied with the **Copy** button or `V`.
 4. After the call, choose **No answer**, **Not interested**, **Callback**, or **Made a sale**. Customer notes are saved as you type and follow the account across imports. The notebook button (notes & history) opens a customer's full record — notes, every logged call and their place in the pipeline — from **All leads**, **Callbacks**, **Sales pipeline** and **Activations**, so notes stay reachable at any stage, including after a sale leaves the calling queue.
 5. A sale starts in **Credit vetting**. Mark it approved to move it to **Awaiting confirmation**. Only choose **Complete activation** after the confirmations department has finished. **ATT or non-ATT is chosen at that moment** — the pipeline shows "at activation" until then, because the split is a result, not a guess. The Activations page tracks the package and type, with **all-time, today, and this month** filters. Notes remain editable from any of those stages through the customer record. Declined vetting can be reopened; completed activations can be moved back if necessary, and the recorded type can be corrected from the activations list.
 6. Deals change: type any package name and, if known, its actual price in rand while recording a sale, or manage package suggestions in **Data & settings**. The activation type is not known until activation. Removing a suggestion does not alter existing sales.
@@ -44,10 +44,10 @@ Paste one customer per line, with tabs or spaces. For example (invented data):
 
 ```text
 Nomsa Example    Prospect    Consumer    5-12345678901234    9005120000000    2026-10-28
-Alex Example     Active      Consumer    5-12345678901235    8507210000000    2026-10-28
+Alex Example     Active      Consumer    3-12345678901235    8507210000000    2026-10-28
 ```
 
-A row needs a name before a `5-` followed by digits. A 13-digit customer ID and `YYYY-MM-DD` list date can follow the account number. Blank lines are ignored. The preview reports invalid rows, duplicates within the paste, filtered accounts, and leads needing age review. Repeated accounts are merged; if contradictory rows contain an excluded status, the excluded row wins.
+A row needs a name before a `1-`, `3-` or `5-` followed by digits. A 13-digit customer ID and `YYYY-MM-DD` list date can follow the account number. Blank lines are ignored. The preview reports invalid rows, duplicates within the paste, filtered accounts, and leads needing age review. Repeated accounts are merged; if contradictory rows contain an excluded status, the excluded row wins.
 
 - **Active**, **Archived**, and an explicit **60+** status are excluded, case-insensitively. Known customers aged **60 or older** are also excluded. A matching existing lead and callback are removed from calling; existing sales, activations, notes, and history are retained.
 - Age is inferred from the first six digits (`YYMMDD`) of a 13-digit South African-style ID. Missing, malformed, impossible, or future birth dates are held for **age review** and cannot enter the automatic queue until you explicitly verify that the customer is under 60. A newly imported row must be verified again if its age is still unknown.
@@ -55,7 +55,7 @@ A row needs a name before a `5-` followed by digits. A 13-digit customer ID and 
 
 ### Referrals and payments
 
-1. Open **Referrals → Add referral**. Choose an existing referrer or add a person with an optional contact. Enter the customer's name and, optionally, their contact and `5-` account. An introduction can be captured before an account is known; edit it later to link the account. One customer account can be attributed to only one referral.
+1. Open **Referrals → Add referral**. Choose an existing referrer or add a person with an optional contact. Enter the customer's name and, optionally, their contact and their `1-`, `3-` or `5-` account. An introduction can be captured before an account is known; edit it later to link the account. One customer account can be attributed to only one referral.
 2. Link to a customer already in the workspace, or enter an account that will be imported later. If the account is not in the lead list, **Add to leads** creates a lead with an unknown age. Check the customer's status in your calling system and verify their age before calling. Existing exclusions, do-not-call decisions, callbacks and queue protections still apply. Referrals survive daily list replacement; a referral on its own does not make an unlinked person callable.
 3. Record the actual **deal price in rand** when entering/editing a sale, or at activation. Package names and suggestions do not contain reliable prices, so they are never used to guess one. An existing activation without a price shows **Needs price** and cannot be marked paid until the price is entered. Older workspaces are migrated with prices unknown.
 4. A reward becomes **Ready to pay** only after the linked sale passes vetting and confirmation and is activated: **R20 for a package costing R200.00 or less**, and **R30 for a package costing more than R200.00**. Exact cents are used, so R200.01 earns R30. Declined, unactivated or unpriced sales are not payable. The tracker shows the amount due and a per-referrer total.
@@ -118,6 +118,17 @@ A retained callback can still become callable even if its lead has been removed 
 - Clearing browser/site data, using private browsing, changing browsers or addresses, or hitting storage limits can lose access to saved work. A storage failure is shown in the app. Export a backup regularly using **Data & settings → Export backup**; use **Restore backup** to validate and replace the current workspace with one you previously exported.
 - Tabs on the same browser and origin listen for each other's changes, but concurrent edits are last-write-wins. This is not a multi-user database. Keep a backup before making large changes.
 - Browser storage has finite, browser-dependent capacity. The lead table is paginated and queue lookups are indexed, but very large histories or a shared team deployment should use a more capable storage service.
+
+### Desk lock
+
+**Keep other people out of your data.** In **Data & settings → Desk lock** you can set an unlock code and turn on **Lock desk when the app opens**. From then on the desk is locked whenever the app is opened, and nobody can reach your leads, notes or sales until it is unlocked.
+
+There are two ways to unlock:
+
+- **Unlock code** — the code you set in Data & settings. The code itself is never stored; only a hash of it is, so it cannot be read back from the workspace file.
+- **Fingerprint** — scan your enrolled finger on the USB fingerprint reader. This build does not have a reader SDK wired in yet, so if scanning fails, use your unlock code instead. The fingerprint check lives in `src-tauri/src/main.rs` as the `verify_fingerprint` command; point it at your reader's SDK to make scanning work.
+
+Lock the desk at any time with **Lock desk now**. Backups are not encrypted, so keep the exported files and your unlock code to yourself.
 
 ## Typography
 
