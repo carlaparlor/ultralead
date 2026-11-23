@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react'
-import { ArrowRight, Check, Gift, Link2, NotebookPen, Pencil, Plus, Search, Trash2, UsersRound, Wallet } from 'lucide-react'
+import { Archive, ArrowRight, ArchiveRestore, Check, Gift, Link2, NotebookPen, Pencil, Plus, Search, Trash2, UsersRound, Wallet, X } from 'lucide-react'
 import { formatDate } from '../domain/dates'
 import { formatRand } from '../domain/money'
-import { createReferralIndex, paymentReviewComparison, referralState, type ReferralState, type ReferralStatus } from '../domain/referrals'
+import { createReferralIndex, paymentReviewComparison, referralAttentionStatuses, referralState, summariseReferrers, type ReferralState, type ReferralStatus, type ReferrerTotals } from '../domain/referrals'
 import type { Lead, Referral, Referrer, Sale, Workspace } from '../domain/types'
 import { EmptyState, Initials, StatusPill } from './ui'
 
@@ -12,7 +12,7 @@ const labels: Record<ReferralStatus, string> = {
   pending_confirmation: 'Awaiting confirmation', declined: 'Vetting declined', needs_price: 'Needs price',
   ready: 'Ready to pay', paid: 'Paid', paid_review: 'Paid · review',
 }
-const attentionStatuses: ReferralStatus[] = ['needs_link', 'not_in_list', 'age_review', 'excluded', 'sale_missing', 'needs_price', 'paid_review']
+const attentionStatuses = referralAttentionStatuses
 const priority: Record<ReferralStatus, number> = {
   ready: 0, needs_price: 1, paid_review: 2, needs_link: 3, not_in_list: 4, age_review: 5, excluded: 6, sale_missing: 6,
   credit_vetting: 7, pending_confirmation: 7, awaiting_sale: 7, not_interested: 8, declined: 8, paid: 9,
@@ -33,6 +33,43 @@ function matchesFilter(state: ReferralState, filter: Filter): boolean {
   if (filter === 'paid') return state.status === 'paid' || state.status === 'paid_review'
   if (filter === 'declined') return state.status === 'declined'
   return !['ready', 'paid', 'paid_review', 'declined'].includes(state.status)
+}
+
+const EMPTY_TOTALS: ReferrerTotals = { referralCount: 0, activeCount: 0, readyCount: 0, attentionCount: 0, dueCents: 0, paidCents: 0, lastReferralAt: null, lastPaymentAt: null }
+type ReferrerFilter = 'active' | 'balance' | 'archived' | 'all'
+
+/** Anyone with money waiting first, then the busiest, then a stable alphabetical order. */
+function referrersFor(workspace: Workspace, totals: Map<string, ReferrerTotals>, query: string, filter: ReferrerFilter): Referrer[] {
+  const normalized = query.trim().toLowerCase()
+  return workspace.referrers
+    .filter(referrer => {
+      const total = totals.get(referrer.id) ?? EMPTY_TOTALS
+      if (filter === 'active' && referrer.archivedAt) return false
+      if (filter === 'archived' && !referrer.archivedAt) return false
+      if (filter === 'balance' && (!!referrer.archivedAt || (!total.dueCents && !total.readyCount))) return false
+      return !normalized || [referrer.name, referrer.contact, referrer.notes].some(value => value.toLowerCase().includes(normalized))
+    })
+    .sort((a, b) => {
+      const totalA = totals.get(a.id) ?? EMPTY_TOTALS
+      const totalB = totals.get(b.id) ?? EMPTY_TOTALS
+      return totalB.readyCount - totalA.readyCount || totalB.dueCents - totalA.dueCents || totalB.referralCount - totalA.referralCount
+        || a.name.localeCompare(b.name)
+    })
+}
+
+function referrerSummary(totals: ReferrerTotals): string {
+  if (!totals.referralCount) return 'No referrals yet'
+  const parts = [`${totals.activeCount} in progress`]
+  if (totals.readyCount) parts.push(`${totals.readyCount} ready to pay`)
+  if (totals.attentionCount) parts.push(`${totals.attentionCount} need attention`)
+  return parts.join(' · ')
+}
+
+function referrerEmptyMessage(filter: ReferrerFilter, query: string): string {
+  if (query.trim()) return 'No referrers match that search. Try a name, contact or note.'
+  if (filter === 'archived') return 'Nobody is archived. Archiving stops new referrals without removing anyone.'
+  if (filter === 'balance') return 'Nobody is owed money right now. Rewards appear here once a referral activates.'
+  return 'Your referrers and their totals will appear here.'
 }
 
 function ReferralRow({ state, onEdit, onRemove, onAddToLeads, onVerify, onCall, onEditSale, onPay, onHistory, onOpenCustomer }: {
@@ -84,15 +121,19 @@ function ReferralRow({ state, onEdit, onRemove, onAddToLeads, onVerify, onCall, 
   </article>
 }
 
-export function ReferralsView({ workspace, now, onAdd, onEdit, onRemove, onAddToLeads, onVerify, onCall, onEditSale, onPay, onHistory, onEditReferrer, onRemoveReferrer, onOpenCustomer }: {
+export function ReferralsView({ workspace, now, onAdd, onEdit, onRemove, onAddToLeads, onVerify, onCall, onEditSale, onPay, onHistory, onAddReferrer, onEditReferrer, onArchiveReferrer, onRemoveReferrer, onOpenCustomer }: {
   workspace: Workspace; now: Date; onAdd: () => void; onEdit: (referral: Referral) => void; onRemove: (referral: Referral) => void;
   onAddToLeads: (referral: Referral) => void; onVerify: (lead: Lead) => void; onCall: (lead: Lead, override: boolean) => void; onEditSale: (sale: Sale) => void;
   onPay: (state: ReferralState) => void; onHistory: (referral: Referral) => void;
-  onEditReferrer: (referrer: Referrer) => void; onRemoveReferrer: (referrer: Referrer) => void; onOpenCustomer: (account: string) => void;
+  onAddReferrer: () => void; onEditReferrer: (referrer: Referrer) => void; onArchiveReferrer: (referrer: Referrer, archived: boolean) => void;
+  onRemoveReferrer: (referrer: Referrer) => void; onOpenCustomer: (account: string) => void;
 }) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [page, setPage] = useState(0)
+  const [referrerQuery, setReferrerQuery] = useState('')
+  const [referrerFilter, setReferrerFilter] = useState<ReferrerFilter>('active')
+  const [referrerId, setReferrerId] = useState<string | null>(null)
   const states = useMemo(() => {
     const index = createReferralIndex(workspace)
     return workspace.referrals.map(referral => referralState(workspace, referral, now, index))
@@ -103,14 +144,11 @@ export function ReferralsView({ workspace, now, onAdd, onEdit, onRemove, onAddTo
   const inProgress = states.filter(state => matchesFilter(state, 'progress'))
   const dueCents = ready.reduce((sum, state) => sum + state.dueCents, 0)
   const paidCents = paid.reduce((sum, state) => sum + (state.payment?.amountCents ?? 0), 0)
-  const totalsByReferrer = new Map<string, { count: number; due: number; paid: number }>()
-  for (const state of states) {
-    const total = totalsByReferrer.get(state.referrer.id) ?? { count: 0, due: 0, paid: 0 }
-    total.count++; total.due += state.dueCents; total.paid += state.payment?.amountCents ?? 0
-    totalsByReferrer.set(state.referrer.id, total)
-  }
+  const totalsByReferrer = summariseReferrers(workspace, states)
+  const visibleReferrers = referrersFor(workspace, totalsByReferrer, referrerQuery, referrerFilter)
+  const selectedReferrer = referrerId ? workspace.referrers.find(item => item.id === referrerId) : undefined
   const normalizedQuery = query.trim().toLowerCase()
-  const filtered = states.filter(state => matchesFilter(state, filter) && [state.referral.customerName, state.referral.accountNumber, state.referral.customerContact, state.referrer.name, state.referrer.contact, state.sale?.packageName].some(value => value?.toLowerCase().includes(normalizedQuery)))
+  const filtered = states.filter(state => (!referrerId || state.referrer.id === referrerId) && matchesFilter(state, filter) && [state.referral.customerName, state.referral.accountNumber, state.referral.customerContact, state.referrer.name, state.referrer.contact, state.sale?.packageName].some(value => value?.toLowerCase().includes(normalizedQuery)))
     .sort((a, b) => priority[a.status] - priority[b.status] || b.referral.createdAt.localeCompare(a.referral.createdAt))
   const pageSize = 30
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize))
@@ -133,16 +171,43 @@ export function ReferralsView({ workspace, now, onAdd, onEdit, onRemove, onAddTo
     </section>
 
     <section className="referral-section" aria-labelledby="referral-tracker-heading">
-      <div className="referral-section-heading"><div><span className="referral-kicker">01 / REFERRAL TRACKER</span><h2 id="referral-tracker-heading">Referred customers <span>{String(states.length).padStart(2, '0')}</span></h2><p>Follow each introduction through the pipeline.</p></div><div className="referral-controls"><label className="search-field"><Search size={16} /><span className="sr-only">Search referrals</span><input value={query} onChange={event => { setQuery(event.target.value); setPage(0) }} placeholder="Search referrals" /></label><label className="period-field"><span className="sr-only">Filter referrals</span><select value={filter} onChange={event => { setFilter(event.target.value as Filter); setPage(0) }}><option value="all">ALL STATUSES</option><option value="progress">IN PROGRESS</option><option value="ready">READY TO PAY</option><option value="attention">NEEDS ATTENTION</option><option value="paid">PAID</option><option value="declined">DECLINED</option></select></label></div></div>
+      <div className="referral-section-heading"><div><span className="referral-kicker">01 / REFERRAL TRACKER</span><h2 id="referral-tracker-heading">Referred customers <span>{String(states.length).padStart(2, '0')}</span></h2><p>Follow each introduction through the pipeline.</p>{selectedReferrer && <button className="referrer-scope" onClick={() => { setReferrerId(null); setPage(0) }}>SHOWING {selectedReferrer.name.toUpperCase()} <X size={12} /> <span className="sr-only">Clear referrer filter</span></button>}</div><div className="referral-controls"><label className="search-field"><Search size={16} /><span className="sr-only">Search referrals</span><input value={query} onChange={event => { setQuery(event.target.value); setPage(0) }} placeholder="Search referrals" /></label><label className="period-field"><span className="sr-only">Filter referrals</span><select value={filter} onChange={event => { setFilter(event.target.value as Filter); setPage(0) }}><option value="all">ALL STATUSES</option><option value="progress">IN PROGRESS</option><option value="ready">READY TO PAY</option><option value="attention">NEEDS ATTENTION</option><option value="paid">PAID</option><option value="declined">DECLINED</option></select></label></div></div>
       {!states.length ? <div className="table-empty referral-empty"><EmptyState title="Your first referral starts here." action={<button className="button button-primary" onClick={onAdd}>ADD REFERRAL <ArrowRight size={15} /></button>}>Add the person who referred them and the customer. You can link their account now or later.</EmptyState></div> : !filtered.length ? <div className="table-empty referral-empty"><EmptyState title="No matching referrals.">Try a different search or status.</EmptyState></div> : <div className="referral-list">{visible.map(state => <ReferralRow key={state.referral.id} state={state} onEdit={onEdit} onRemove={onRemove} onAddToLeads={onAddToLeads} onVerify={onVerify} onCall={onCall} onEditSale={onEditSale} onPay={onPay} onHistory={onHistory} onOpenCustomer={onOpenCustomer} />)}</div>}
       <div className="referral-list-foot"><span>SHOWING {filtered.length ? `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, filtered.length)}` : '0'} OF {filtered.length} REFERRALS</span>{pageCount > 1 ? <div className="pagination"><button onClick={() => setPage(currentPage - 1)} disabled={currentPage === 0} aria-label="Previous referrals page">PREV</button><span>{currentPage + 1} / {pageCount}</span><button onClick={() => setPage(currentPage + 1)} disabled={currentPage === pageCount - 1} aria-label="Next referrals page">NEXT</button></div> : <span>ONE REFERRAL PER CUSTOMER ACCOUNT</span>}</div>
     </section>
 
-    <section className="referral-section referral-people-section" aria-labelledby="referrers-heading"><div className="referral-section-heading"><div><span className="referral-kicker">02 / YOUR REFERRERS</span><h2 id="referrers-heading">People to thank <span>{String(workspace.referrers.length).padStart(2, '0')}</span></h2><p>Payable and paid totals, grouped by person.</p></div></div>
-      {workspace.referrers.length ? <div className="referrer-grid">{workspace.referrers.map(referrer => {
-        const totals = totalsByReferrer.get(referrer.id) ?? { count: 0, due: 0, paid: 0 }
-        return <article className="referrer-card" key={referrer.id}><div className="referrer-card-head"><Initials name={referrer.name} /><div><h3>{referrer.name}</h3><p>{referrer.contact || 'No contact added'}</p></div><button className="icon-button" onClick={() => onEditReferrer(referrer)} aria-label={`Edit referrer ${referrer.name}`} title="Edit referrer"><Pencil size={14} /></button>{!totals.count && <button className="icon-button row-delete" onClick={() => onRemoveReferrer(referrer)} aria-label={`Delete referrer ${referrer.name}`} title="Delete referrer"><Trash2 size={14} /></button>}</div><div className="referrer-card-totals"><div><span>REFERRALS</span><strong>{String(totals.count).padStart(2, '0')}</strong></div><div><span>TO PAY</span><strong>{formatRand(totals.due)}</strong></div><div><span>PAID</span><strong>{formatRand(totals.paid)}</strong></div></div></article>
-      })}</div> : <div className="referrer-empty">Your referrers and their totals will appear here.</div>}
+    <section className="referral-section referral-people-section" aria-labelledby="referrers-heading">
+      <div className="referral-section-heading">
+        <div><span className="referral-kicker">02 / YOUR REFERRERS</span><h2 id="referrers-heading">People to thank <span>{String(workspace.referrers.length).padStart(2, '0')}</span></h2><p>Every person who introduces customers, with what each one is owed and has earned.</p></div>
+        <button className="button button-outline button-small" onClick={onAddReferrer}><Plus size={14} /> ADD REFERRER</button>
+      </div>
+      {!!workspace.referrers.length && <div className="referrer-controls">
+        <label className="search-field"><Search size={16} /><span className="sr-only">Search referrers</span><input value={referrerQuery} onChange={event => setReferrerQuery(event.target.value)} placeholder="Search referrers" /></label>
+        <label className="period-field"><span className="sr-only">Filter referrers</span><select value={referrerFilter} onChange={event => setReferrerFilter(event.target.value as ReferrerFilter)}><option value="active">ACTIVE PEOPLE</option><option value="balance">WITH BALANCE</option><option value="archived">ARCHIVED</option><option value="all">EVERYONE</option></select></label>
+      </div>}
+      {workspace.referrers.length ? (visibleReferrers.length ? <div className="referrer-grid">{visibleReferrers.map(referrer => {
+        const totals = totalsByReferrer.get(referrer.id) ?? EMPTY_TOTALS
+        const archived = !!referrer.archivedAt
+        return <article className={`referrer-card ${archived ? 'referrer-card-archived' : ''}`} key={referrer.id}>
+          <div className="referrer-card-head">
+            <Initials name={referrer.name} />
+            <div><h3 className="referrer-name">{referrer.name}</h3><p>{referrer.contact || 'No contact added'}</p>{archived && <span className="referrer-badge">ARCHIVED</span>}</div>
+            <button className="icon-button" onClick={() => onEditReferrer(referrer)} aria-label={`Edit referrer ${referrer.name}`} title="Edit referrer"><Pencil size={14} /></button>
+            <button className="icon-button" onClick={() => onArchiveReferrer(referrer, !archived)} aria-label={`${archived ? 'Restore' : 'Archive'} referrer ${referrer.name}`} title={archived ? 'Restore referrer' : 'Archive referrer'}>{archived ? <ArchiveRestore size={14} /> : <Archive size={14} />}</button>
+            {!totals.referralCount && <button className="icon-button row-delete" onClick={() => onRemoveReferrer(referrer)} aria-label={`Delete referrer ${referrer.name}`} title="Delete referrer"><Trash2 size={14} /></button>}
+          </div>
+          {referrer.notes && <p className="referrer-card-note">{referrer.notes}</p>}
+          <div className="referrer-card-totals">
+            <div><span>REFERRALS</span><strong>{String(totals.referralCount).padStart(2, '0')}</strong></div>
+            <div><span>TO PAY</span><strong>{formatRand(totals.dueCents)}</strong></div>
+            <div><span>PAID</span><strong>{formatRand(totals.paidCents)}</strong></div>
+          </div>
+          <div className="referrer-card-foot">
+            <span>{referrerSummary(totals)}</span>
+            {!!totals.referralCount && <button className="text-action" onClick={() => { setReferrerId(referrer.id); setFilter('all'); setPage(0); setQuery('') }}>VIEW REFERRALS <ArrowRight size={12} /></button>}
+          </div>
+        </article>
+      })}</div> : <div className="referrer-empty">{referrerEmptyMessage(referrerFilter, referrerQuery)}</div>) : <div className="referrer-empty">No referrers yet. Add the person who introduced your first customer, or add them while capturing a referral.</div>}
     </section>
     <p className="referral-privacy">PRIVATE TO THIS WORKSPACE · PAYMENTS ARE RECORDED, NOT SENT</p>
   </>

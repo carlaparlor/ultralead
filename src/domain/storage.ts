@@ -1,11 +1,15 @@
 import { createDemoWorkspace } from './demo'
 import { isPackagePrice, referralRewardCents } from './money'
+import { REFERRER_CONTACT_LIMIT, REFERRER_NAME_LIMIT, REFERRER_NOTES_LIMIT } from './referrals'
 import { createEmptyWorkspace, pruneExcluded } from './workspace'
 import type { Workspace } from './types'
 
-// A separate key prevents an older tab from overwriting the new referral/payment data.
-export const STORAGE_KEY = 'ultralead-plus.workspace.v2'
+// A separate key per schema version prevents an older running tab from overwriting newer data.
+export const STORAGE_KEY = 'ultralead-plus.workspace.v3'
+/** Version 2 held referrals but referrers had no notes or archive state. */
+export const V2_STORAGE_KEY = 'ultralead-plus.workspace.v2'
 export const LEGACY_STORAGE_KEY = 'ultralead-plus.workspace.v1'
+const FALLBACK_KEYS = [V2_STORAGE_KEY, LEGACY_STORAGE_KEY]
 const RECOVERY_KEY = 'ultralead-plus.unreadable-backup'
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -27,8 +31,10 @@ function isLead(value: unknown): boolean {
     && isDate(value.importedAt) && typeof value.ageVerified === 'boolean'
 }
 
-/** The original validation is also used before migrating a version-1 backup. */
-function hasValidCore(value: unknown, version: 1 | 2): value is Record<string, unknown> {
+type SchemaVersion = 1 | 2 | 3
+
+/** The original validation is also used before migrating an older backup. */
+function hasValidCore(value: unknown, version: SchemaVersion): value is Record<string, unknown> {
   if (!isObject(value) || value.version !== version || typeof value.isDemo !== 'boolean' || !isDate(value.createdAt)
     || !isString(value.deviceSeed) || !value.deviceSeed || !Array.isArray(value.leads)
     || !Array.isArray(value.callbacks) || !Array.isArray(value.sales) || !Array.isArray(value.activity)
@@ -56,11 +62,18 @@ function hasValidCore(value: unknown, version: 1 | 2): value is Record<string, u
   return true
 }
 
-/** Reject malformed or foreign files instead of partially overwriting a workspace. */
-export function isWorkspace(value: unknown): value is Workspace {
-  if (!hasValidCore(value, 2) || !Array.isArray(value.referrers) || !Array.isArray(value.referrals)) return false
-  if (!value.referrers.every(item => isObject(item) && isNonEmpty(item.id) && isNonEmpty(item.name) && item.name.trim().length <= 120
-    && isString(item.contact) && item.contact.length <= 160 && isDate(item.createdAt)) || !hasUnique(value.referrers, item => item.id)) return false
+/** Referrers gained private notes and an archive state in version 3; older records migrate with defaults. */
+function isReferrer(value: unknown, version: SchemaVersion): boolean {
+  if (!isObject(value) || !isNonEmpty(value.id) || !isNonEmpty(value.name) || value.name.trim().length > REFERRER_NAME_LIMIT
+    || !isString(value.contact) || value.contact.length > REFERRER_CONTACT_LIMIT || !isDate(value.createdAt)) return false
+  if (version < 3) return true
+  return isString(value.notes) && value.notes.length <= REFERRER_NOTES_LIMIT
+    && isNullableDate(value.archivedAt) && isDate(value.updatedAt)
+}
+
+function hasValidReferrals(value: Record<string, unknown>, version: SchemaVersion): boolean {
+  if (!Array.isArray(value.referrers) || !Array.isArray(value.referrals)) return false
+  if (!value.referrers.every(item => isReferrer(item, version)) || !hasUnique(value.referrers, item => item.id)) return false
   const referrerIds = new Set(value.referrers.map(item => (item as Record<string, unknown>).id))
   const linkedAccounts = new Set<string>()
   const paymentIds = new Set<string>()
@@ -91,12 +104,32 @@ export function isWorkspace(value: unknown): value is Workspace {
   return true
 }
 
-/** Validate first, then migrate old records with an unknown price rather than guessing. */
+/** Reject malformed or foreign files instead of partially overwriting a workspace. */
+export function isWorkspace(value: unknown): value is Workspace {
+  if (!hasValidCore(value, 3)) return false
+  return hasValidReferrals(value, 3)
+}
+
+/**
+ * Validate first, then migrate old records rather than guessing. Version 1 never had prices or
+ * referrals; version 2 referrers predate notes and archiving, so they start unarchived with none.
+ */
 export function decodeWorkspace(value: unknown): Workspace | null {
   if (isWorkspace(value)) return value
+  if (hasValidCore(value, 2) && hasValidReferrals(value, 2)) {
+    const migrated: Workspace = {
+      ...(value as unknown as Workspace), version: 3,
+      referrers: (value.referrers as Record<string, unknown>[]).map(referrer => ({
+        id: referrer.id as string, name: (referrer.name as string).trim(), contact: referrer.contact as string,
+        notes: '', archivedAt: null,
+        createdAt: referrer.createdAt as string, updatedAt: referrer.createdAt as string,
+      })),
+    }
+    return isWorkspace(migrated) ? migrated : null
+  }
   if (!hasValidCore(value, 1)) return null
   const migrated = {
-    ...value, version: 2,
+    ...value, version: 3,
     sales: (value.sales as Record<string, unknown>[]).map(sale => ({ ...sale, packagePriceCents: null })),
     referrers: [], referrals: [],
   }
@@ -108,7 +141,7 @@ export interface LoadResult { workspace: Workspace; warning: string | null; canS
 export function loadWorkspace(storage: Storage, now = new Date()): LoadResult {
   try {
     const current = storage.getItem(STORAGE_KEY)
-    const raw = current ?? storage.getItem(LEGACY_STORAGE_KEY)
+    const raw = current ?? FALLBACK_KEYS.map(key => storage.getItem(key)).find(value => value !== null) ?? null
     if (raw === null) return { workspace: createDemoWorkspace(now), warning: null, canSave: true }
     const workspace = decodeWorkspace(JSON.parse(raw) as unknown)
     if (!workspace) throw new Error('Invalid workspace')
@@ -116,7 +149,7 @@ export function loadWorkspace(storage: Storage, now = new Date()): LoadResult {
   } catch {
     // Preserve unreadable data before a clean workspace is ever written over it.
     try {
-      const raw = storage.getItem(STORAGE_KEY) ?? storage.getItem(LEGACY_STORAGE_KEY)
+      const raw = storage.getItem(STORAGE_KEY) ?? FALLBACK_KEYS.map(key => storage.getItem(key)).find(value => value !== null) ?? null
       if (raw !== null) storage.setItem(RECOVERY_KEY, raw)
       return { workspace: createEmptyWorkspace(now), warning: 'Saved data could not be read. A recovery copy was kept in this browser; restore a backup if you have one.', canSave: true }
     } catch {
@@ -146,8 +179,9 @@ export function createLocalWorkspaceRepository(storage: Storage): WorkspaceRepos
     save: workspace => {
       // Only remove a successfully read old copy after the upgraded workspace has been saved.
       storage.setItem(STORAGE_KEY, JSON.stringify(workspace))
+      // Only discard older copies once the current version has been written successfully.
       if (migratedFromLegacy) {
-        storage.removeItem(LEGACY_STORAGE_KEY)
+        for (const key of FALLBACK_KEYS) storage.removeItem(key)
         migratedFromLegacy = false
       }
     },

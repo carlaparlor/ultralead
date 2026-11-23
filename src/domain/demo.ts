@@ -45,10 +45,14 @@ export function createDemoWorkspace(now = new Date()): Workspace {
     sale('demo-sale-4', historical[1], 'Home Connect', 29900, 'Non-ATT', 'activated', 150),
     sale('demo-sale-5', historical[2], 'Everyday 20GB', null, 'ATT', 'activated', 1740),
   ]
+  const referrer = (id: string, name: string, contact: string, notes: string, archived = false): Referrer => ({
+    id, name, contact, notes, archivedAt: archived ? minutesAgo(600) : null,
+    createdAt: minutesAgo(4000), updatedAt: minutesAgo(4000),
+  })
   const referrers: Referrer[] = [
-    { id: 'demo-referrer-1', name: 'Nandi Molefe', contact: '082 000 0101', createdAt: minutesAgo(4000) },
-    { id: 'demo-referrer-2', name: 'Simon Jacobs', contact: '083 000 0102', createdAt: minutesAgo(4000) },
-    { id: 'demo-referrer-3', name: 'Anele Mokoena', contact: '084 000 0103', createdAt: minutesAgo(4000) },
+    referrer('demo-referrer-1', 'Nandi Molefe', '082 000 0101', 'Prefers a WhatsApp message before a call. Works with Thandi.'),
+    referrer('demo-referrer-2', 'Simon Jacobs', '083 000 0102', 'Neighbourhood introducer. Usually refers two people a month.'),
+    referrer('demo-referrer-3', 'Anele Mokoena', '084 000 0103', 'Paused introductions while travelling.', true),
   ]
   const referral = (id: string, customer: Lead, referrerId: string, minutes: number): Referral => ({
     id, referrerId, customerName: customer.name, customerContact: '', accountNumber: customer.accountNumber,

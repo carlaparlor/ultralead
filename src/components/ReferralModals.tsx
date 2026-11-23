@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { ArrowRight, Info } from 'lucide-react'
 import { formatDate } from '../domain/dates'
 import { formatRand } from '../domain/money'
-import { activePayment } from '../domain/referrals'
+import { activePayment, REFERRER_CONTACT_LIMIT, REFERRER_NAME_LIMIT, REFERRER_NOTES_LIMIT, referrerNameMatch } from '../domain/referrals'
 import type { Referral, ReferralPayment, Referrer, Workspace } from '../domain/types'
 import { Modal } from './ui'
 
@@ -18,7 +18,7 @@ export interface ReferralFormValues {
 export function ReferralModal({ workspace, referral, onClose, onSave }: {
   workspace: Workspace; referral?: Referral; onClose: () => void; onSave: (values: ReferralFormValues) => void;
 }) {
-  const [referrerId, setReferrerId] = useState(referral?.referrerId ?? (workspace.referrers.length ? '' : 'new'))
+  const [referrerId, setReferrerId] = useState(referral?.referrerId ?? (workspace.referrers.some(person => !person.archivedAt) ? '' : 'new'))
   const [newName, setNewName] = useState('')
   const [newContact, setNewContact] = useState('')
   const [customerName, setCustomerName] = useState(referral?.customerName ?? '')
@@ -29,6 +29,8 @@ export function ReferralModal({ workspace, referral, onClose, onSave }: {
   const invalidAccount = !!normalizedAccount && !/^5-\d+$/.test(normalizedAccount)
   const duplicate = !!normalizedAccount && workspace.referrals.some(item => item.id !== referral?.id && item.accountNumber === normalizedAccount)
   const valid = !!customerName.trim() && !!referrerId && (referrerId !== 'new' || !!newName.trim()) && !invalidAccount && !duplicate
+  // Archived people cannot take new referrals, but one already attached to this referral stays selectable.
+  const selectableReferrers = useMemo(() => workspace.referrers.filter(person => !person.archivedAt || person.id === referral?.referrerId), [workspace.referrers, referral?.referrerId])
   const customers = useMemo(() => {
     const map = new Map<string, string>()
     for (const lead of [...workspace.leads, ...workspace.callbacks.map(callback => callback.lead), ...workspace.sales.map(sale => sale.lead)]) {
@@ -42,9 +44,9 @@ export function ReferralModal({ workspace, referral, onClose, onSave }: {
       {workspace.isDemo && <div className="demo-import-note referral-demo-note">This is sample data. Clear the sample workspace before adding real referrals; the first import replaces everything here.</div>}
       <label className="form-label" htmlFor="referrer-select">WHO REFERRED THEM? <span>REQUIRED</span></label>
       <select className="form-input" id="referrer-select" data-autofocus={!locked || undefined} required disabled={locked} value={referrerId} onChange={event => setReferrerId(event.target.value)}>
-        <option value="">Choose a person</option>{workspace.referrers.map(person => <option value={person.id} key={person.id}>{person.name}{person.contact ? ` · ${person.contact}` : ''}</option>)}<option value="new">+ Add a new person</option>
+        <option value="">Choose a person</option>{selectableReferrers.map(person => <option value={person.id} key={person.id}>{person.name}{person.archivedAt ? ' · ARCHIVED' : ''}{person.contact ? ` · ${person.contact}` : ''}</option>)}<option value="new">+ Add a new person</option>
       </select>
-      {referrerId === 'new' && <div className="referral-form-inset"><label className="form-label" htmlFor="new-referrer-name">REFERRER NAME <span>REQUIRED</span></label><input className="form-input" id="new-referrer-name" required maxLength={120} value={newName} onChange={event => setNewName(event.target.value)} placeholder="e.g. Nandi Molefe" /><label className="form-label form-spaced" htmlFor="new-referrer-contact">REFERRER CONTACT <span>OPTIONAL</span></label><input className="form-input" id="new-referrer-contact" maxLength={160} value={newContact} onChange={event => setNewContact(event.target.value)} placeholder="Phone, email or a note" /><div className="input-help">For identifying and contacting them. Do not enter banking details.</div></div>}
+      {referrerId === 'new' && <div className="referral-form-inset"><label className="form-label" htmlFor="new-referrer-name">REFERRER NAME <span>REQUIRED</span></label><input className="form-input" id="new-referrer-name" required maxLength={REFERRER_NAME_LIMIT} value={newName} onChange={event => setNewName(event.target.value)} placeholder="e.g. Nandi Molefe" /><label className="form-label form-spaced" htmlFor="new-referrer-contact">REFERRER CONTACT <span>OPTIONAL</span></label><input className="form-input" id="new-referrer-contact" maxLength={REFERRER_CONTACT_LIMIT} value={newContact} onChange={event => setNewContact(event.target.value)} placeholder="Phone, email or a note" /><div className="input-help">For identifying and contacting them. Do not enter banking details.</div></div>}
       <div className="referral-form-divider"><span>CUSTOMER DETAILS</span></div>
       <label className="form-label" htmlFor="referral-customer">CUSTOMER NAME <span>REQUIRED</span></label><input className="form-input" id="referral-customer" data-autofocus={locked || undefined} required maxLength={120} value={customerName} onChange={event => setCustomerName(event.target.value)} placeholder="Name of the person referred" />
       <label className="form-label form-spaced" htmlFor="referral-contact">CUSTOMER CONTACT <span>OPTIONAL</span></label><input className="form-input" id="referral-contact" maxLength={160} value={customerContact} onChange={event => setCustomerContact(event.target.value)} placeholder="Phone, email or a note" />
@@ -57,10 +59,41 @@ export function ReferralModal({ workspace, referral, onClose, onSave }: {
   </Modal>
 }
 
-export function ReferrerModal({ referrer, onClose, onSave }: { referrer: Referrer; onClose: () => void; onSave: (name: string, contact: string) => void }) {
-  const [name, setName] = useState(referrer.name)
-  const [contact, setContact] = useState(referrer.contact)
-  return <Modal title="Edit referrer." eyebrow="REFERRALS" onClose={onClose}><form className="modal-body" onSubmit={event => { event.preventDefault(); if (name.trim()) onSave(name, contact) }}><p className="modal-intro">Update this person's details across their referrals. Previously recorded payments keep their original name.</p><label className="form-label" htmlFor="edit-referrer-name">NAME <span>REQUIRED</span></label><input className="form-input" id="edit-referrer-name" data-autofocus required maxLength={120} value={name} onChange={event => setName(event.target.value)} /><label className="form-label form-spaced" htmlFor="edit-referrer-contact">CONTACT <span>OPTIONAL</span></label><input className="form-input" id="edit-referrer-contact" maxLength={160} value={contact} onChange={event => setContact(event.target.value)} /><div className="input-help">Do not enter banking details.</div><div className="modal-footer"><button type="button" className="button button-outline" onClick={onClose}>CANCEL</button><button type="submit" className="button button-primary" disabled={!name.trim()}>SAVE CHANGES <ArrowRight size={15} /></button></div></form></Modal>
+export interface ReferrerFormValues {
+  name: string
+  contact: string
+  notes: string
+}
+
+export function ReferrerModal({ workspace, referrer, onClose, onSave }: {
+  workspace: Workspace; referrer?: Referrer; onClose: () => void; onSave: (values: ReferrerFormValues) => void;
+}) {
+  const [name, setName] = useState(referrer?.name ?? '')
+  const [contact, setContact] = useState(referrer?.contact ?? '')
+  const [notes, setNotes] = useState(referrer?.notes ?? '')
+  const duplicate = referrerNameMatch(workspace, name, referrer?.id)
+  const archived = !!referrer?.archivedAt
+  const valid = !!name.trim()
+  return <Modal title={referrer ? 'Edit referrer.' : 'Add a referrer.'} eyebrow="REFERRALS" onClose={onClose}>
+    <form className="modal-body" onSubmit={event => { event.preventDefault(); if (valid) onSave({ name, contact, notes }) }}>
+      <p className="modal-intro">{referrer
+        ? 'Update this person once and it applies everywhere they appear. Payments already recorded keep the name used at the time.'
+        : 'Add someone who introduces customers, even before their first referral arrives.'}</p>
+      {archived && <div className="type-later-note"><Info size={15} /><span><strong>Archived.</strong> New referrals cannot choose this person. Restore them from the referrer list to start a new introduction.</span></div>}
+      <label className="form-label" htmlFor="referrer-name">NAME <span>REQUIRED</span></label>
+      <input className="form-input" id="referrer-name" data-autofocus required maxLength={REFERRER_NAME_LIMIT} value={name} onChange={event => setName(event.target.value)} placeholder="e.g. Nandi Molefe" aria-invalid={!!duplicate} aria-describedby={duplicate ? 'referrer-name-help' : undefined} />
+      {duplicate && <div className="input-help form-error" id="referrer-name-help">
+        {duplicate.name === name.trim() ? `${duplicate.name} is already on your list.` : `This may be ${duplicate.name}, already on your list.`} Edit that person instead so their referrals and payments stay together.
+      </div>}
+      <label className="form-label form-spaced" htmlFor="referrer-contact">CONTACT <span>OPTIONAL</span></label>
+      <input className="form-input" id="referrer-contact" maxLength={REFERRER_CONTACT_LIMIT} value={contact} onChange={event => setContact(event.target.value)} placeholder="Phone, email or how to reach them" />
+      <div className="input-help">For identifying and contacting them. Do not enter banking details.</div>
+      <label className="form-label form-spaced" htmlFor="referrer-notes">PRIVATE NOTE <span>OPTIONAL</span></label>
+      <textarea className="form-input referrer-notes-input" id="referrer-notes" maxLength={REFERRER_NOTES_LIMIT} rows={3} value={notes} onChange={event => setNotes(event.target.value)} placeholder="How you know them, best time to call, or what they usually refer" />
+      <div className="input-help">{REFERRER_NOTES_LIMIT - notes.length} characters left. Stored only in this workspace and its backups.</div>
+      <div className="modal-footer"><button type="button" className="button button-outline" onClick={onClose}>CANCEL</button><button type="submit" className="button button-primary" disabled={!valid}>{referrer ? 'SAVE CHANGES' : 'ADD REFERRER'} <ArrowRight size={15} /></button></div>
+    </form>
+  </Modal>
 }
 
 export function PaymentHistoryModal({ referral, onClose, onCorrect }: { referral: Referral; onClose: () => void; onCorrect: (payment: ReferralPayment) => void }) {

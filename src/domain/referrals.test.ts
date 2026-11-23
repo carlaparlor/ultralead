@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createDemoWorkspace } from './demo'
 import { MAX_PACKAGE_PRICE_CENTS, formatRand, parsePriceCents, referralRewardCents } from './money'
-import { addReferralToLeads, addReferrer, createReferralIndex, editReferrer, markReferralPaid, paymentReviewComparison, referralState, removeReferral, removeReferrer, saveReferral, voidReferralPayment } from './referrals'
+import { addReferralToLeads, addReferrer, addReferrer as addPerson, createReferralIndex, editReferrer, markReferralPaid, paymentReviewComparison, referrerNameMatch, referralState, removeReferral, removeReferrer, saveReferral, setReferrerArchived, summariseReferrers, voidReferralPayment } from './referrals'
 import { readiness } from './queue'
 import { parseBackup } from './storage'
 import { applyImport, clearCategory, editSale, recordSale, removeSale, updateSaleStage } from './workspace'
@@ -234,5 +234,69 @@ describe('manual payments and corrections', () => {
     expect(paidAgain.referrals[0].payments).toHaveLength(2)
     expect(referralState(paidAgain, paidAgain.referrals[0], later(5)).status).toBe('paid')
     expect(editReferrer(paidAgain, paidAgain.referrers[0].id, 'Corrected name', '')).not.toBe(paidAgain)
+  })
+})
+
+describe('referrer records', () => {
+  it('keeps a private note, trims it, and replaces it on edit', () => {
+    let ws = workspaceWith()
+    ws = addPerson(ws, '  Nandi Molefe  ', ' 082 000 0101 ', NOW, '  Prefers a WhatsApp before a call.  ')
+    expect(ws.referrers[0]).toMatchObject({ name: 'Nandi Molefe', contact: '082 000 0101', notes: 'Prefers a WhatsApp before a call.', archivedAt: null })
+    expect(ws.referrers[0].updatedAt).toBe(NOW.toISOString())
+    ws = editReferrer(ws, ws.referrers[0].id, 'Nandi Molefe', '', '', later(5))
+    expect(ws.referrers[0]).toMatchObject({ contact: '', notes: '', updatedAt: later(5).toISOString(), createdAt: NOW.toISOString() })
+    // The note has a length limit so a stray paste cannot bloat the workspace.
+    expect(addPerson(workspaceWith(), 'Someone', '', NOW, 'x'.repeat(601))).toEqual(workspaceWith())
+  })
+  it('suggests a likely duplicate by normalised name, but allows a deliberate near match', () => {
+    let ws = addPerson(workspaceWith(), 'Nandi  Molefe', '', NOW)
+    expect(referrerNameMatch(ws, 'nandi molefe')?.id).toBe(ws.referrers[0].id)
+    expect(referrerNameMatch(ws, 'Nandi Molefe', ws.referrers[0].id)).toBeUndefined()
+    expect(referrerNameMatch(ws, 'Nandi Molefe Jnr')).toBeUndefined()
+    ws = addPerson(ws, 'Nandi Molefe Jnr', '', NOW)
+    expect(ws.referrers).toHaveLength(2)
+  })
+  it('archives without touching referrals or payments, and refuses new referrals while archived', () => {
+    const { ws: initial, lead } = setup()
+    let ws = editReferrer(initial, initial.referrers[0].id, 'Referrer One', '082 000 0101', 'Met at the taxi rank.')
+    ws = recordSale(ws, lead, 'Package', NOW, 20_000)
+    const saleId = ws.sales[0].id
+    ws = updateSaleStage(updateSaleStage(ws, saleId, 'pending_confirmation', later(1)), saleId, 'activated', later(2), 'ATT')
+    ws = markReferralPaid(ws, ws.referrals[0].id, later(3))
+    const paid = ws
+    const archived = setReferrerArchived(paid, paid.referrers[0].id, true, later(4))
+    expect(archived.referrers[0]).toMatchObject({ archivedAt: later(4).toISOString(), notes: 'Met at the taxi rank.' })
+    expect(archived.referrals).toEqual(paid.referrals)
+    expect(referralState(archived, archived.referrals[0], later(4)).status).toBe('paid')
+    // Archiving twice in a row is a no-op, so a double click cannot move the timestamp.
+    expect(setReferrerArchived(archived, archived.referrers[0].id, true, later(6))).toBe(archived)
+    // A new customer cannot be attributed to an archived person.
+    const newDetails = { referrerId: archived.referrers[0].id, customerName: 'Another Customer', customerContact: '', accountNumber: null }
+    expect(saveReferral(archived, newDetails, later(7))).toBe(archived)
+    // Correcting the existing referral is still allowed, so its details can be fixed.
+    const editedDetails = { ...newDetails, accountNumber: archived.referrals[0].accountNumber }
+    expect(saveReferral(archived, editedDetails, later(4), archived.referrals[0].id)).not.toBe(archived)
+    const restored = setReferrerArchived(archived, archived.referrers[0].id, false, later(8))
+    expect(restored.referrers[0].archivedAt).toBeNull()
+    expect(saveReferral(restored, newDetails, later(9))).not.toBe(restored)
+  })
+  it('summarises each referrer from the same derived states', () => {
+    const { ws: initial, lead } = setup()
+    let ws = addPerson(initial, 'Second Person', '', NOW)
+    ws = saveReferral(ws, { referrerId: ws.referrers[1].id, customerName: 'Unlinked Customer', customerContact: '', accountNumber: null }, NOW)
+    ws = recordSale(ws, lead, 'Package', NOW, 20_000)
+    const saleId = ws.sales[0].id
+    ws = updateSaleStage(updateSaleStage(ws, saleId, 'pending_confirmation', later(1)), saleId, 'activated', later(2), 'ATT')
+    const index = createReferralIndex(ws)
+    const states = ws.referrals.map(referral => referralState(ws, referral, later(2), index))
+    const totals = summariseReferrers(ws, states)
+    expect(totals.get(ws.referrers[0].id)).toMatchObject({
+      referralCount: 1, activeCount: 1, readyCount: 1, attentionCount: 0, dueCents: 2000, paidCents: 0,
+      lastReferralAt: ws.referrals.find(referral => referral.referrerId === ws.referrers[0].id)!.createdAt,
+    })
+    expect(totals.get(ws.referrers[1].id)).toMatchObject({ referralCount: 1, activeCount: 1, readyCount: 0, attentionCount: 1, dueCents: 0 })
+    const paid = markReferralPaid(ws, ws.referrals.find(referral => referral.referrerId === ws.referrers[0].id)!.id, later(3))
+    const paidTotals = summariseReferrers(paid, paid.referrals.map(referral => referralState(paid, referral, later(3))))
+    expect(paidTotals.get(paid.referrers[0].id)).toMatchObject({ readyCount: 0, dueCents: 0, paidCents: 2000, activeCount: 0, lastPaymentAt: later(3).toISOString() })
   })
 })

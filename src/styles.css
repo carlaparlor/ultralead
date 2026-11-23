@@ -892,6 +892,19 @@ tbody tr:hover { background: #2e332e; box-shadow: inset 3px 0 0 var(--green); }
 .referrer-card-totals span { display: block; color: #9eac9b; font-size: 8px; font-weight: 700; }
 .referrer-card-totals strong { display: block; margin-top: 7px; color: #e2e9df; font-size: 12px; letter-spacing: -.04em; overflow-wrap: anywhere; }
 .referrer-empty { padding: 21px; border: 1px dashed #4c5749; color: #a5b2a1; font-size: 10px; line-height: 1.5; }
+.referrer-controls { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.referrer-controls .search-field { min-width: 210px; }
+.referrer-controls .period-field select { min-width: 155px; }
+.referrer-card { display: flex; flex-direction: column; }
+.referrer-card-archived { opacity: .72; }
+.referrer-card-note { margin: 0; padding: 0 15px 13px; color: #b3bfae; font-size: 9px; line-height: 1.6; overflow-wrap: anywhere; }
+.referrer-badge { display: inline-block; margin-top: 6px; padding: 2px 5px; background: #3a4039; color: #b7c4b2; font-size: 7px; font-weight: 700; letter-spacing: .08em; }
+.referrer-card-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto; padding: 9px 15px; border-top: 1px solid #404a40; color: #9dab99; font-size: 8px; line-height: 1.45; }
+.referrer-card-foot > span { overflow-wrap: anywhere; }
+.referrer-card-foot .text-action { padding: 4px; white-space: nowrap; }
+.referrer-scope { display: inline-flex; align-items: center; gap: 6px; margin-top: 9px; padding: 5px 8px; border: 1px solid #5d6d56; background: #33402f; color: #cfe3c7; font-size: 8px; font-weight: 700; letter-spacing: .06em; }
+.referrer-scope:hover { background: #3b4a36; color: #fff; }
+.referrer-notes-input { min-height: 74px; resize: vertical; line-height: 1.6; }
 .referral-privacy { padding: 16px 0 30px; margin: 0; color: #9ba797; font-size: 8px; font-weight: 700; letter-spacing: .04em; }
 .referral-form-inset { margin-top: 14px; padding: 15px; border: 1px solid #465244; background: #252b25; }
 .referral-form-divider { margin: 22px 0 17px; padding-bottom: 9px; border-bottom: 1px solid #475145; color: #9fac9c; font-size: 9px; font-weight: 700; letter-spacing: .08em; }
@@ -936,6 +949,9 @@ tbody tr:hover { background: #2e332e; box-shadow: inset 3px 0 0 var(--green); }
   .referral-controls { width: 100%; }
   .referral-controls .search-field { flex: 1; min-width: 0; }
   .referral-controls .period-field select { min-width: 0; max-width: 150px; }
+  .referrer-controls { width: 100%; }
+  .referrer-controls .search-field { flex: 1; min-width: 0; }
+  .referrer-controls .period-field select { min-width: 0; max-width: 150px; }
   .referral-row-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px 12px; padding: 15px; }
   .referral-row-bottom { align-items: flex-start; flex-direction: column; padding: 10px 15px; }
   .referral-row-actions { justify-content: flex-start; width: 100%; }
@@ -949,4 +965,8 @@ tbody tr:hover { background: #2e332e; box-shadow: inset 3px 0 0 var(--green); }
   .referral-controls { flex-wrap: wrap; }
   .referral-controls .search-field { flex: 1 0 100%; }
   .referral-controls .period-field, .referral-controls .period-field select { width: 100%; max-width: none; }
+  .referrer-controls { flex-wrap: wrap; }
+  .referrer-controls .search-field { flex: 1 0 100%; }
+  .referrer-controls .period-field, .referrer-controls .period-field select { width: 100%; max-width: none; }
+  .referrer-card-foot { align-items: flex-start; flex-direction: column; }
 }

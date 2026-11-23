@@ -56,12 +56,17 @@ export interface Sale {
   activatedAt: string | null
 }
 
-/** Someone who introduces customers. Contact is an optional note, not banking details. */
+/** Someone who introduces customers. Contact and notes are optional text, never banking details. */
 export interface Referrer {
   id: string
   name: string
   contact: string
+  /** Private note about the relationship, such as how or when to reach them. */
+  notes: string
+  /** Set when someone stops referring. Their history stays; they cannot be chosen for new referrals. */
+  archivedAt: string | null
   createdAt: string
+  updatedAt: string
 }
 
 /** Snapshot of a payment recorded manually, including the facts used to calculate it. */
@@ -101,7 +106,7 @@ export interface Activity {
 }
 
 export interface Workspace {
-  version: 2
+  version: 3
   isDemo: boolean
   createdAt: string
   deviceSeed: string
