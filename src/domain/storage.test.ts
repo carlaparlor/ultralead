@@ -85,6 +85,25 @@ describe('storage and backups', () => {
     expect(parseBackup(JSON.stringify(withoutSale))).toEqual(withoutSale)
     expect(parseBackup(JSON.stringify(ws))).toEqual(ws)
   })
+  it('accepts an older referrer or workspace without the later fields and fills them in', () => {
+    const ws = createDemoWorkspace(NOW)
+    // A workspace saved before notes, hidden referrers and the monthly target existed.
+    const older = {
+      ...ws,
+      settings: { autoCopy: true },
+      referrers: ws.referrers.map(({ note: _note, archivedAt: _archivedAt, ...referrer }) => referrer),
+    }
+    expect(isWorkspace(older)).toBe(true)
+    const decoded = parseBackup(JSON.stringify(older))!
+    expect(decoded.settings).toEqual({ autoCopy: true, monthlyTarget: null })
+    expect(decoded.referrers.every(referrer => referrer.note === '' && referrer.archivedAt === null)).toBe(true)
+    // The richer fields are still validated when they are present.
+    expect(isWorkspace({ ...ws, referrers: [{ ...ws.referrers[0], note: 'x'.repeat(401) }] })).toBe(false)
+    expect(isWorkspace({ ...ws, referrers: [{ ...ws.referrers[0], archivedAt: 'not-a-date' }] })).toBe(false)
+    expect(isWorkspace({ ...ws, settings: { autoCopy: true, monthlyTarget: 0 } })).toBe(false)
+    expect(isWorkspace({ ...ws, settings: { autoCopy: true, monthlyTarget: 2.5 } })).toBe(false)
+    expect(parseBackup(JSON.stringify({ ...ws, settings: { autoCopy: true, monthlyTarget: 8 } }))!.settings.monthlyTarget).toBe(8)
+  })
   it('preserves unreadable storage in a recovery key instead of silently overwriting it', () => {
     localStorage.setItem(STORAGE_KEY, '{corrupt')
     const result = loadWorkspace(localStorage, NOW)

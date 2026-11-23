@@ -1,12 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { createDemoWorkspace } from './demo'
 import { MAX_PACKAGE_PRICE_CENTS, formatRand, parsePriceCents, referralRewardCents } from './money'
-import { addReferralToLeads, addReferrer, createReferralIndex, editReferrer, markReferralPaid, paymentReviewComparison, referralState, removeReferral, removeReferrer, saveReferral, voidReferralPayment } from './referrals'
+import { addReferralToLeads, addReferrer, createReferralIndex, editReferrer, ledgerTotals, markReferralPaid, paymentReviewComparison, referralState, referrerActivity, referrerLedger, removeReferral, removeReferrer, saveReferral, setReferrerArchived, voidReferralPayment } from './referrals'
 import { readiness } from './queue'
 import { parseBackup } from './storage'
 import { applyImport, clearCategory, editSale, recordSale, removeSale, updateSaleStage } from './workspace'
 import { parseLeads } from './import'
 import { emptyProfile, makeLead, NOW, workspaceWith } from './testFixtures'
+import type { Workspace } from './types'
 
 const later = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000)
 
@@ -234,5 +235,98 @@ describe('manual payments and corrections', () => {
     expect(paidAgain.referrals[0].payments).toHaveLength(2)
     expect(referralState(paidAgain, paidAgain.referrals[0], later(5)).status).toBe('paid')
     expect(editReferrer(paidAgain, paidAgain.referrers[0].id, 'Corrected name', '')).not.toBe(paidAgain)
+  })
+})
+
+describe('referrer ledger', () => {
+  const OCTOBER = new Date(2026, 9, 1)
+  const SEPTEMBER = new Date(2026, 8, 1)
+
+  function ledgerFor(workspace: Workspace, month = OCTOBER) {
+    const index = createReferralIndex(workspace)
+    const states = workspace.referrals.map(referral => referralState(workspace, referral, NOW, index))
+    return referrerLedger(workspace, states, month)
+  }
+
+  it('keeps a note and hides a referrer without losing the money history', () => {
+    let { ws } = setup()
+    ws = addReferrer(ws, { name: ' Nandi Molefe ', contact: ' 082 000 0101 ', note: ' Prefers a WhatsApp. ' }, NOW)
+    expect(ws.referrers[1]).toMatchObject({ name: 'Nandi Molefe', contact: '082 000 0101', note: 'Prefers a WhatsApp.', archivedAt: null })
+    // A note is free text with a length limit, not banking detail storage.
+    expect(addReferrer(ws, { name: 'Too long', contact: '', note: 'x'.repeat(401) }, NOW)).toBe(ws)
+    ws = editReferrer(ws, ws.referrers[1].id, { name: 'Nandi M.', contact: '', note: 'Updated' })
+    expect(ws.referrers[1]).toMatchObject({ name: 'Nandi M.', contact: '', note: 'Updated' })
+    // The older (name, contact) shape still works and leaves an existing note alone.
+    ws = editReferrer(ws, ws.referrers[1].id, 'Nandi M.', '083 000 0000')
+    expect(ws.referrers[1]).toMatchObject({ contact: '083 000 0000', note: 'Updated' })
+    expect(parseBackup(JSON.stringify(ws))).toEqual(ws)
+
+    const hidden = setReferrerArchived(ws, ws.referrers[1].id, true, NOW)
+    expect(hidden.referrers[1].archivedAt).toBe(NOW.toISOString())
+    expect(setReferrerArchived(hidden, hidden.referrers[1].id, true, NOW)).toBe(hidden)
+    const shown = setReferrerArchived(hidden, hidden.referrers[1].id, false, NOW)
+    expect(shown.referrers[1].archivedAt).toBeNull()
+    // Hiding never deletes anything, and a referrer with referrals still cannot be deleted.
+    expect(ledgerFor(hidden)).toHaveLength(ledgerFor(ws).length)
+    expect(removeReferrer(ws, ws.referrers[0].id)).toBe(ws)
+  })
+
+  it('separates what is owed now from what is only in progress', () => {
+    const { ws, id } = setup()
+    let ledger = ledgerFor(ws)
+    expect(ledger[0]).toMatchObject({ referrals: 1, dueCents: 0, readyToPay: 0, inProgress: 1, awaitingActivation: 1 })
+    const activated = activate(20_000)
+    const paidWorkspace = markReferralPaid(activated.ws, activated.id, later(3))
+    ledger = ledgerFor(paidWorkspace)
+    // A paid activation is no longer in progress and is not owed.
+    expect(ledger[0]).toMatchObject({ referrals: 1, dueCents: 0, inProgress: 0, paidToDateCents: 2000, paidToDateCount: 1, readyToPay: 0 })
+    expect(ledger[0].lastPaidAt).not.toBeNull()
+    expect(referralState(paidWorkspace, paidWorkspace.referrals[0], later(3)).status).toBe('paid')
+    expect(id).toBeTruthy()
+  })
+
+  it('counts a reward in the month the activation happened, not the month it was paid', () => {
+    const { ws, id } = activate(20_001)
+    const september = ledgerFor(ws, SEPTEMBER)
+    const october = ledgerFor(ws, OCTOBER)
+    // The activation is NOW (28 October 2026), so October earns it and September does not.
+    expect(september[0]).toMatchObject({ earnedThisMonthCents: 0, readyToPay: 1, dueCents: 3000 })
+    expect(october[0]).toMatchObject({ earnedThisMonthCents: 3000, earnedThisMonthCount: 1 })
+    const paid = markReferralPaid(ws, id, later(5))
+    expect(ledgerFor(paid, OCTOBER)[0]).toMatchObject({ earnedThisMonthCents: 3000, paidThisMonthCents: 3000, paidThisMonthCount: 1, dueCents: 0 })
+    // A corrected mark is not counted as money received.
+    const corrected = voidReferralPayment(paid, id, paid.referrals[0].payments[0].id, later(6))
+    expect(ledgerFor(corrected, OCTOBER)[0]).toMatchObject({ paidThisMonthCents: 0, paidToDateCents: 0, dueCents: 3000 })
+  })
+
+  it('puts the people you owe first, then names when nothing is owed', () => {
+    let ws = workspaceWith(makeLead('5-1'), makeLead('5-2'))
+    ws = addReferrer(ws, { name: 'Owed Person', contact: '', note: '' }, NOW)
+    ws = addReferrer(ws, { name: 'Quiet Person', contact: '', note: '' }, NOW)
+    ws = saveReferral(ws, { referrerId: ws.referrers[0].id, customerName: 'Alpha', customerContact: '', accountNumber: '5-1' }, NOW)
+    ws = recordSale(ws, ws.leads[0], 'A package', NOW, 19_900)
+    const saleId = ws.sales[0].id
+    ws = updateSaleStage(ws, saleId, 'pending_confirmation', later(1))
+    ws = updateSaleStage(ws, saleId, 'activated', later(2), 'ATT')
+    const ledger = ledgerFor(ws, new Date(2026, 9, 1))
+    expect(ledger.map(summary => summary.referrer.name)).toEqual(['Owed Person', 'Quiet Person'])
+    expect(ledger[0].dueCents).toBe(2000)
+    expect(ledger[1]).toMatchObject({ referrals: 0, dueCents: 0 })
+    const totals = ledgerTotals(ledger)
+    expect(totals).toMatchObject({ dueCents: 2000, dueCount: 1, peopleOwed: 1, activeReferrers: 1, earnedThisMonthCents: 2000 })
+    // Hiding a person takes them out of the active count but not out of the money.
+    const hidden = setReferrerArchived(ws, ws.referrers[1].id, true, NOW)
+    expect(ledgerTotals(ledgerFor(hidden, new Date(2026, 9, 1))).activeReferrers).toBe(1)
+  })
+
+  it('tells one person’s short story: referred, activated, paid', () => {
+    const { ws, id } = activate(20_000)
+    const paid = markReferralPaid(ws, id, later(5))
+    const states = paid.referrals.map(referral => referralState(paid, referral, later(5)))
+    const events = referrerActivity(states)
+    expect(events.map(event => event.kind)).toEqual(['paid', 'ready', 'referral'])
+    expect(events[0].amountCents).toBe(2000)
+    expect(events[1].amountCents).toBe(0) // already paid, so nothing is shown as newly due
+    expect(referrerActivity(states, 1)).toHaveLength(1)
   })
 })

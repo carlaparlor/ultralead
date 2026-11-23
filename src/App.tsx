@@ -9,7 +9,7 @@ import { ActivationsView } from './components/ActivationsView'
 import { SettingsView } from './components/SettingsView'
 import { InsightsView } from './components/InsightsView'
 import { ReferralsView } from './components/ReferralsView'
-import { PaymentHistoryModal, ReferralModal, ReferrerModal, type ReferralFormValues } from './components/ReferralModals'
+import { AddReferrerModal, PaymentHistoryModal, ReferralModal, ReferrerModal, type ReferralFormValues } from './components/ReferralModals'
 import { ImportModal } from './components/ImportModal'
 import { CustomerModal } from './components/CustomerModal'
 import { ActivationModal, CallbackModal, HelpModal, SaleModal } from './components/OutcomeModals'
@@ -18,7 +18,8 @@ import { copyText } from './domain/clipboard'
 import { localDayKey } from './domain/dates'
 import { parseLeads, type ImportPreview } from './domain/import'
 import { formatRand } from './domain/money'
-import { activePayment, addReferralToLeads, addReferrer, editReferrer, markReferralPaid, removeReferral, removeReferrer, saveReferral, voidReferralPayment, type ReferralState } from './domain/referrals'
+import { activePayment, addReferralToLeads, addReferrer, editReferrer, markReferralPaid, removeReferral, removeReferrer, saveReferral, setReferrerArchived, voidReferralPayment, type ReferralState } from './domain/referrals'
+import { startOfMonth } from './domain/month'
 import { findLead, getSmartQueue, readiness } from './domain/queue'
 import { parseBackup } from './domain/storage'
 import { applyImport, clearCategory, createEmptyWorkspace, editSale, findCustomerLead, pruneExcluded, recordNoAnswer, recordNotInterested, recordSale, removeCallback, removeLead, removeSale, resetToQueue, saveCallback, saveNotes, updateSaleStage, verifyAge } from './domain/workspace'
@@ -32,6 +33,7 @@ type ModalState =
   | { type: 'activation'; sale: Sale }
   | { type: 'referral'; referral?: Referral }
   | { type: 'referrer'; referrer: Referrer }
+  | { type: 'referrer-new' }
   | { type: 'referral-history'; referralId: string }
   | { type: 'customer'; account: string }
   | { type: 'help' }
@@ -47,7 +49,7 @@ const readImportMode = (): 'replace' | 'append' => {
   try { return window.localStorage.getItem(IMPORT_MODE_KEY) === 'append' ? 'append' : 'replace' } catch { return 'replace' }
 }
 
-const viewNames: Record<View, string> = { overview: 'OVERVIEW', leads: 'ALL LEADS', callbacks: 'CALLBACKS', pipeline: 'SALES PIPELINE', activations: 'ACTIVATIONS', referrals: 'REFERRALS', insights: 'INSIGHTS', settings: 'DATA & SETTINGS' }
+const viewNames: Record<View, string> = { overview: 'OVERVIEW', leads: 'ALL LEADS', callbacks: 'CALLBACKS', pipeline: 'SALES PIPELINE', activations: 'ACTIVATIONS', referrals: 'REFERRERS', insights: 'MONTHLY REVIEW', settings: 'DATA & SETTINGS' }
 const clearDescriptions: Record<ClearCategory, { title: string; description: string }> = {
   leads: { title: 'Clear the lead list?', description: 'This removes your current daily lead list only. Callbacks, sales, activations and customer notes will stay.' },
   callbacks: { title: 'Clear all callbacks?', description: 'This removes scheduled callbacks only. Your leads, sales, activations and customer notes will stay. Leads may return to the calling queue.' },
@@ -68,6 +70,8 @@ export default function App() {
   const [toast, setToast] = useState('')
   const [importMode, setImportMode] = useState<'replace' | 'append'>(readImportMode)
   const [importText, setImportText] = useState('')
+  // The month the monthly review and the referrer ledger are looking at.
+  const [month, setMonth] = useState(() => startOfMonth(new Date()))
   const [undoImport, setUndoImport] = useState<(() => void) | null>(null)
   const queue = useMemo(() => getSmartQueue(workspace, now), [workspace, now])
   const selectedIsQueued = selection && queue.some(item => item.lead.accountNumber === selection.account)
@@ -253,8 +257,9 @@ export default function App() {
   const openCustomer = (account: string) => setModal({ type: 'customer', account })
   const onAutoCopy = (value: boolean) => setWorkspace(previous => ({ ...previous, settings: { ...previous.settings, autoCopy: value } }))
 
-  const onAddReferral = () => {
-    if (!workspaceRef.current.isDemo) { setModal({ type: 'referral' }); return }
+  /** Real referrals should never mix with the sample workspace, which a first import replaces. */
+  const startRealWorkspace = (next: () => void) => {
+    if (!workspaceRef.current.isDemo) { next(); return }
     setModal({ type: 'confirm', title: 'Start with your own referrals?', description: 'You are viewing sample data. Start with a clean workspace so your referrals will not be discarded when you import leads. This removes all sample leads, sales, activations and referrals.', confirmLabel: 'CLEAR SAMPLE & CONTINUE', action: () => {
       const latest = workspaceRef.current
       if (latest.isDemo) {
@@ -263,9 +268,11 @@ export default function App() {
         clean.deviceSeed = latest.deviceSeed
         setUndoImport(null); setWorkspace(clean); setSelection(null)
       }
-      setModal({ type: 'referral' })
+      next()
     } })
   }
+  const onAddReferral = () => startRealWorkspace(() => setModal({ type: 'referral' }))
+  const onAddReferrer = () => startRealWorkspace(() => setModal({ type: 'referrer-new' }))
   const onSaveReferral = (values: ReferralFormValues, existing?: Referral) => {
     const current = workspaceRef.current
     if (existing) {
@@ -276,7 +283,7 @@ export default function App() {
     let referrerId = values.referrerId
     const at = new Date()
     if (referrerId === 'new') {
-      candidate = addReferrer(current, values.newReferrerName, values.newReferrerContact, at)
+      candidate = addReferrer(current, { name: values.newReferrerName, contact: values.newReferrerContact, note: '' }, at)
       if (candidate === current) { notify('The referrer could not be saved. Check their details.'); return }
       referrerId = candidate.referrers[candidate.referrers.length - 1].id
     }
@@ -308,6 +315,16 @@ export default function App() {
       notify(saved ? 'Payment recorded. No money was sent by the app.' : 'Payment marked paid in this session only. Export a backup before leaving.')
     } })
   }
+  const onArchiveReferrer = (referrer: Referrer) => {
+    const current = workspaceRef.current
+    const latest = current.referrers.find(item => item.id === referrer.id)
+    if (!latest || latest.archivedAt !== referrer.archivedAt) { notify('Referrer changed in another tab. Try again.'); return }
+    const archived = referrer.archivedAt === null
+    const next = setReferrerArchived(current, referrer.id, archived, new Date())
+    if (next === current) { notify('Referrer could not be updated.'); return }
+    setUndoImport(null); setWorkspace(next)
+    notify(archived ? `${referrer.name} hidden from the active list. Their history and money are kept.` : `${referrer.name} is back in the active list.`)
+  }
   const onRemoveReferrer = (referrer: Referrer) => setModal({ type: 'confirm', title: 'Delete this referrer?', description: `Remove ${referrer.name} from your referrer list. A person with referrals cannot be deleted.`, confirmLabel: 'DELETE REFERRER', danger: true, action: () => {
     const current = workspaceRef.current; const next = removeReferrer(current, referrer.id)
     if (next === current) { notify('Referrer could not be deleted; they may still have referrals.'); return }
@@ -319,7 +336,7 @@ export default function App() {
     <a className="skip-link" href="#main-content">Skip to content</a>
     <Sidebar view={view} onNavigate={setView} workspace={workspace} mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
     <div className="app-main">
-      <header className="topbar"><div className="topbar-left"><button className="icon-button menu-button" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20} /></button><strong>{viewNames[view]}</strong></div><div className="topbar-right"><button className="topbar-help" onClick={() => setModal({ type: 'help' })} aria-label="How smart cycling works"><CircleHelp size={17} /></button><button className="button top-import" onClick={openImport}><Upload size={15} /> IMPORT LEADS</button></div></header>
+      <header className="topbar"><div className="topbar-left"><button className="icon-button menu-button" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={20} /></button><span aria-hidden="true">{viewNames[view]}</span></div><div className="topbar-right"><button className="topbar-help" onClick={() => setModal({ type: 'help' })} aria-label="How smart cycling works"><CircleHelp size={17} /></button><button className="button top-import" onClick={openImport}><Upload size={15} /> IMPORT LEADS</button></div></header>
       {workspace.isDemo && <section className="demo-banner" aria-label="Sample workspace notice"><div><span className="demo-tag">SAMPLE DATA</span><span>Sample leads. Import your own list to replace them.</span></div><button onClick={startFresh}>CLEAR SAMPLE DATA <ArrowRight size={14} /></button></section>}
       {storageWarning && <div className="storage-warning" role="alert">{storageWarning}</div>}
       <main className="main-content" id="main-content">
@@ -328,9 +345,9 @@ export default function App() {
         {view === 'callbacks' && <CallbacksView workspace={workspace} now={now} onOpenCustomer={openCustomer} onCall={onCall} onVerify={onVerify} onEdit={item => setModal({ type: 'callback', lead: findLead(workspace, item.lead.accountNumber) ?? item.lead, existing: item, recordCall: false })} onRemove={onRemoveCallback} />}
         {view === 'pipeline' && <PipelineView workspace={workspace} onStage={onStage} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onRemove={onRemoveSale} onOpenCustomer={openCustomer} />}
         {view === 'activations' && <ActivationsView workspace={workspace} now={now} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onUndo={sale => setModal({ type: 'confirm', title: 'Move back to confirmation?', description: `${sale.lead.name}'s sale will no longer count as an activation until it is completed again.${referralImpact(sale)}`, confirmLabel: 'MOVE BACK', action: () => applyStage(sale, 'pending_confirmation', 'Moved back to confirmation.') })} onRemove={onRemoveSale} onOpenCustomer={openCustomer} />}
-        {view === 'referrals' && <ReferralsView workspace={workspace} now={now} onAdd={onAddReferral} onEdit={referral => setModal({ type: 'referral', referral })} onRemove={onRemoveReferral} onAddToLeads={onAddReferralToLeads} onVerify={onVerify} onCall={onCall} onEditSale={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onPay={onPayReferral} onHistory={referral => setModal({ type: 'referral-history', referralId: referral.id })} onEditReferrer={referrer => setModal({ type: 'referrer', referrer })} onRemoveReferrer={onRemoveReferrer} onOpenCustomer={openCustomer} />}
-        {view === 'insights' && <InsightsView workspace={workspace} now={now} />}
-        {view === 'settings' && <SettingsView workspace={workspace} onAutoCopy={onAutoCopy} onAddPackage={name => { const trimmed = name.trim(); if (trimmed) setWorkspace(previous => previous.packages.some(item => item.toLowerCase() === trimmed.toLowerCase()) ? previous : { ...previous, packages: [...previous.packages, trimmed] }) }} onRemovePackage={name => setWorkspace(previous => ({ ...previous, packages: previous.packages.filter(item => item !== name) }))} onClear={onClear} onExport={onExport} onRestore={file => { void onRestore(file) }} />}
+        {view === 'referrals' && <ReferralsView workspace={workspace} now={now} month={month} onAdd={onAddReferral} onEdit={referral => setModal({ type: 'referral', referral })} onRemove={onRemoveReferral} onAddToLeads={onAddReferralToLeads} onVerify={onVerify} onCall={onCall} onEditSale={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onPay={onPayReferral} onHistory={referral => setModal({ type: 'referral-history', referralId: referral.id })} onEditReferrer={referrer => setModal({ type: 'referrer', referrer })} onArchiveReferrer={onArchiveReferrer} onRemoveReferrer={onRemoveReferrer} onAddReferrer={onAddReferrer} onOpenCustomer={openCustomer} />}
+        {view === 'insights' && <InsightsView workspace={workspace} now={now} month={month} onMonth={setMonth} onNavigate={setView} />}
+        {view === 'settings' && <SettingsView workspace={workspace} onAutoCopy={onAutoCopy} onAddPackage={name => { const trimmed = name.trim(); if (trimmed) setWorkspace(previous => previous.packages.some(item => item.toLowerCase() === trimmed.toLowerCase()) ? previous : { ...previous, packages: [...previous.packages, trimmed] }) }} onRemovePackage={name => setWorkspace(previous => ({ ...previous, packages: previous.packages.filter(item => item !== name) }))} onClear={onClear} onExport={onExport} onMonthlyTarget={value => setWorkspace(previous => ({ ...previous, settings: { ...previous.settings, monthlyTarget: value } }))} onRestore={file => { void onRestore(file) }} />}
       </main>
     </div>
     </div>
@@ -358,13 +375,24 @@ export default function App() {
       applyStage(modal.sale, 'activated', `Activation completed as ${type === 'ATT' ? 'ATT' : 'non-ATT'}.`, type, priceCents); setModal(null)
     }} />}
     {modal?.type === 'referral' && <ReferralModal key={modal.referral?.id ?? 'new'} workspace={workspace} referral={modal.referral} onClose={() => setModal(null)} onSave={values => onSaveReferral(values, modal.referral)} />}
-    {modal?.type === 'referrer' && <ReferrerModal key={modal.referrer.id} referrer={modal.referrer} onClose={() => setModal(null)} onSave={(name, contact) => {
+    {modal?.type === 'referrer' && <ReferrerModal key={modal.referrer.id} referrer={modal.referrer} onClose={() => setModal(null)} onSave={details => {
       const current = workspaceRef.current
       const latest = current.referrers.find(item => item.id === modal.referrer.id)
-      if (!latest || latest.name !== modal.referrer.name || latest.contact !== modal.referrer.contact) { setModal(null); notify('Referrer changed in another tab. Open it again to review.'); return }
-      const next = editReferrer(current, modal.referrer.id, name, contact)
+      // Compare the editable fields only: key order and untouched timestamps are not a conflict.
+      if (!latest || latest.name !== modal.referrer.name || latest.contact !== modal.referrer.contact
+        || latest.note !== modal.referrer.note || latest.archivedAt !== modal.referrer.archivedAt) {
+        setModal(null); notify('Referrer changed in another tab. Open it again to review.'); return
+      }
+      const next = editReferrer(current, modal.referrer.id, details)
       if (next === current) { notify('Referrer could not be updated.'); return }
       setUndoImport(null); setWorkspace(next); setModal(null); notify('Referrer updated.')
+    }} />}
+    {modal?.type === 'referrer-new' && <AddReferrerModal onClose={() => setModal(null)} onSave={details => {
+      const current = workspaceRef.current
+      const next = addReferrer(current, details, new Date())
+      if (next === current) { notify('The referrer could not be saved. Check their details.'); return }
+      setUndoImport(null); setWorkspace(next); setModal(null)
+      notify(`${details.name.trim()} added. Add a referral when they send someone.`)
     }} />}
     {modal?.type === 'referral-history' && (() => {
       const referral = workspace.referrals.find(item => item.id === modal.referralId)

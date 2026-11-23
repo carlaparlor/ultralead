@@ -1,5 +1,6 @@
 import { exclusionReason } from './import'
 import { referralRewardCents } from './money'
+import { isInMonth } from './month'
 import { createQueueIndex, readiness, type QueueIndex, type Readiness } from './queue'
 import { makeId, type Lead, type Referral, type ReferralPayment, type Referrer, type Sale, type Workspace } from './types'
 
@@ -114,20 +115,174 @@ export interface ReferralDetails {
 const validName = (value: string) => !!value.trim() && value.trim().length <= 120
 const validContact = (value: string) => value.trim().length <= 160
 
-export function addReferrer(workspace: Workspace, name: string, contact: string, now: Date): Workspace {
-  if (!validName(name) || !validContact(contact)) return workspace
-  const referrer: Referrer = { id: makeId(), name: name.trim(), contact: contact.trim(), createdAt: now.toISOString() }
+export const MAX_REFERRER_NOTE = 400
+
+export interface ReferrerDetails {
+  name: string
+  contact: string
+  note: string
+}
+
+const validNote = (value: string) => value.trim().length <= MAX_REFERRER_NOTE
+
+/** Accepts the richer details object, and still the older (name, contact, now) call shape. */
+export function addReferrer(workspace: Workspace, input: ReferrerDetails | string, contactOrNow: string | Date, maybeNow?: Date): Workspace {
+  const resolved: ReferrerDetails = typeof input === 'string'
+    ? { name: input, contact: contactOrNow as string, note: '' }
+    : input
+  const now = (typeof input === 'string' ? maybeNow : contactOrNow) as Date
+  if (!validName(resolved.name) || !validContact(resolved.contact) || !validNote(resolved.note)) return workspace
+  const referrer: Referrer = {
+    id: makeId(), name: resolved.name.trim(), contact: resolved.contact.trim(), note: resolved.note.trim(),
+    createdAt: now.toISOString(), archivedAt: null,
+  }
   return { ...workspace, referrers: [...workspace.referrers, referrer] }
 }
 
-export function editReferrer(workspace: Workspace, id: string, name: string, contact: string): Workspace {
-  if (!validName(name) || !validContact(contact) || !workspace.referrers.some(referrer => referrer.id === id)) return workspace
-  return { ...workspace, referrers: workspace.referrers.map(referrer => referrer.id === id ? { ...referrer, name: name.trim(), contact: contact.trim() } : referrer) }
+export function editReferrer(workspace: Workspace, id: string, details: ReferrerDetails | string, contact?: string): Workspace {
+  const target = workspace.referrers.find(referrer => referrer.id === id)
+  if (!target) return workspace
+  const resolved: ReferrerDetails = typeof details === 'string'
+    ? { name: details, contact: contact ?? '', note: target.note }
+    : details
+  if (!validName(resolved.name) || !validContact(resolved.contact) || !validNote(resolved.note)) return workspace
+  return { ...workspace, referrers: workspace.referrers.map(referrer => referrer.id === id ? {
+    ...referrer, name: resolved.name.trim(), contact: resolved.contact.trim(), note: resolved.note.trim(),
+  } : referrer) }
+}
+
+/** Hiding a referrer keeps every referral and payment; it is a view, not a deletion. */
+export function setReferrerArchived(workspace: Workspace, id: string, archived: boolean, now: Date): Workspace {
+  const target = workspace.referrers.find(referrer => referrer.id === id)
+  if (!target || (target.archivedAt !== null) === archived) return workspace
+  return { ...workspace, referrers: workspace.referrers.map(referrer => referrer.id === id ? { ...referrer, archivedAt: archived ? now.toISOString() : null } : referrer) }
 }
 
 export function removeReferrer(workspace: Workspace, id: string): Workspace {
   if (workspace.referrals.some(referral => referral.referrerId === id) || !workspace.referrers.some(referrer => referrer.id === id)) return workspace
   return { ...workspace, referrers: workspace.referrers.filter(referrer => referrer.id !== id) }
+}
+
+export interface ReferrerSummary {
+  referrer: Referrer
+  /** Referrals attributed to this person, all time. */
+  referrals: number
+  /** Referrals not yet paid or closed. */
+  inProgress: number
+  awaitingActivation: number
+  readyToPay: number
+  dueCents: number
+  /** Rewards earned by activations in the selected month. */
+  earnedThisMonthCents: number
+  earnedThisMonthCount: number
+  paidThisMonthCents: number
+  paidThisMonthCount: number
+  paidToDateCents: number
+  paidToDateCount: number
+  /** Money paid against an activation that has since changed and needs a look. */
+  reviewCount: number
+  lastPaidAt: string | null
+  lastReferralAt: string | null
+}
+
+/**
+ * One pass over every referral produces both the tracker rows and the per-person
+ * ledger, so totals and rows are always derived from the same state.
+ */
+export function referrerLedger(workspace: Workspace, states: ReferralState[], month: Date): ReferrerSummary[] {
+  const summaries = new Map<string, ReferrerSummary>()
+  const reserve = (referrer: Referrer) => summaries.get(referrer.id) ?? {
+    referrer, referrals: 0, inProgress: 0, awaitingActivation: 0, readyToPay: 0, dueCents: 0,
+    earnedThisMonthCents: 0, earnedThisMonthCount: 0, paidThisMonthCents: 0, paidThisMonthCount: 0,
+    paidToDateCents: 0, paidToDateCount: 0, reviewCount: 0, lastPaidAt: null, lastReferralAt: null,
+  }
+  for (const referrer of workspace.referrers) summaries.set(referrer.id, reserve(referrer))
+  for (const state of states) {
+    const entry = reserve(state.referrer)
+    summaries.set(state.referrer.id, entry)
+    entry.referrals++
+    if (entry.lastReferralAt === null || state.referral.createdAt > entry.lastReferralAt) entry.lastReferralAt = state.referral.createdAt
+    if (!['ready', 'paid', 'paid_review', 'declined'].includes(state.status)) entry.inProgress++
+    if (['awaiting_sale', 'not_in_list', 'age_review', 'needs_link', 'excluded', 'not_interested', 'sale_missing'].includes(state.status)) entry.awaitingActivation++
+    if (state.status === 'ready') { entry.readyToPay++; entry.dueCents += state.dueCents }
+    if (state.status === 'paid_review') entry.reviewCount++
+    // Money earned in the month, whether or not it has been paid yet.
+    if (state.sale?.stage === 'activated' && state.sale.packagePriceCents !== null
+      && isInMonth(state.sale.activatedAt, month)) {
+      const reward = referralRewardCents(state.sale.packagePriceCents)
+      if (reward !== null) { entry.earnedThisMonthCents += reward; entry.earnedThisMonthCount++ }
+    }
+    for (const payment of state.referral.payments) {
+      if (payment.voidedAt !== null) continue
+      entry.paidToDateCents += payment.amountCents
+      entry.paidToDateCount++
+      if (entry.lastPaidAt === null || payment.paidAt > entry.lastPaidAt) entry.lastPaidAt = payment.paidAt
+      if (isInMonth(payment.paidAt, month)) { entry.paidThisMonthCents += payment.amountCents; entry.paidThisMonthCount++ }
+    }
+  }
+  return [...summaries.values()].sort((a, b) => {
+    if (a.referrer.archivedAt !== b.referrer.archivedAt) return a.referrer.archivedAt ? 1 : -1
+    return b.dueCents - a.dueCents
+      || b.earnedThisMonthCents - a.earnedThisMonthCents
+      || b.paidToDateCents - a.paidToDateCents
+      || a.referrer.name.localeCompare(b.referrer.name)
+  })
+}
+
+export interface ReferrerActivity {
+  kind: 'referral' | 'ready' | 'paid' | 'review'
+  at: string
+  referral: Referral
+  amountCents: number
+}
+
+/** A short, honest timeline for one person: what came in, what became payable, what was paid. */
+export function referrerActivity(states: ReferralState[], limit = 6): ReferrerActivity[] {
+  const events: ReferrerActivity[] = []
+  for (const state of states) {
+    events.push({ kind: 'referral', at: state.referral.createdAt, referral: state.referral, amountCents: 0 })
+    if (state.sale?.stage === 'activated' && state.sale.activatedAt) {
+      events.push({ kind: state.status === 'paid_review' ? 'review' : 'ready', at: state.sale.activatedAt, referral: state.referral, amountCents: state.status === 'paid' ? 0 : state.dueCents })
+    }
+    for (const payment of state.referral.payments) {
+      if (payment.voidedAt !== null) continue
+      events.push({ kind: 'paid', at: payment.paidAt, referral: state.referral, amountCents: payment.amountCents })
+    }
+  }
+  return events.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit)
+}
+
+export interface LedgerTotals {
+  dueCents: number
+  dueCount: number
+  earnedThisMonthCents: number
+  paidThisMonthCents: number
+  paidThisMonthCount: number
+  paidToDateCents: number
+  openReferrals: number
+  reviewCount: number
+  peopleOwed: number
+  activeReferrers: number
+}
+
+export function ledgerTotals(summaries: ReferrerSummary[]): LedgerTotals {
+  const totals: LedgerTotals = {
+    dueCents: 0, dueCount: 0, earnedThisMonthCents: 0, paidThisMonthCents: 0, paidThisMonthCount: 0,
+    paidToDateCents: 0, openReferrals: 0, reviewCount: 0, peopleOwed: 0, activeReferrers: 0,
+  }
+  for (const summary of summaries) {
+    totals.dueCents += summary.dueCents
+    totals.dueCount += summary.readyToPay
+    totals.earnedThisMonthCents += summary.earnedThisMonthCents
+    totals.paidThisMonthCents += summary.paidThisMonthCents
+    totals.paidThisMonthCount += summary.paidThisMonthCount
+    totals.paidToDateCents += summary.paidToDateCents
+    totals.openReferrals += summary.inProgress
+    totals.reviewCount += summary.reviewCount
+    if (summary.dueCents > 0) totals.peopleOwed++
+    if (!summary.referrer.archivedAt && summary.referrals > 0) totals.activeReferrers++
+  }
+  return totals
 }
 
 /** One attributed referral per account. Name-only referrals can be linked later. */

@@ -33,7 +33,9 @@ function hasValidCore(value: unknown, version: 1 | 2): value is Record<string, u
     || !isString(value.deviceSeed) || !value.deviceSeed || !Array.isArray(value.leads)
     || !Array.isArray(value.callbacks) || !Array.isArray(value.sales) || !Array.isArray(value.activity)
     || !Array.isArray(value.packages) || !isObject(value.profiles) || !isObject(value.settings)
-    || typeof value.settings.autoCopy !== 'boolean') return false
+    || typeof value.settings.autoCopy !== 'boolean'
+    || !(value.settings.monthlyTarget === undefined || value.settings.monthlyTarget === null
+      || (typeof value.settings.monthlyTarget === 'number' && Number.isSafeInteger(value.settings.monthlyTarget) && value.settings.monthlyTarget > 0))) return false
   if (!value.leads.every(isLead) || !hasUnique(value.leads, lead => lead.accountNumber)) return false
   if (!value.callbacks.every(item => isObject(item) && isString(item.id) && isLead(item.lead) && isDate(item.dueAt) && isDate(item.createdAt) && isString(item.note))
     || !hasUnique(value.callbacks, item => (item.lead as Record<string, unknown>).accountNumber)) return false
@@ -60,7 +62,10 @@ function hasValidCore(value: unknown, version: 1 | 2): value is Record<string, u
 export function isWorkspace(value: unknown): value is Workspace {
   if (!hasValidCore(value, 2) || !Array.isArray(value.referrers) || !Array.isArray(value.referrals)) return false
   if (!value.referrers.every(item => isObject(item) && isNonEmpty(item.id) && isNonEmpty(item.name) && item.name.trim().length <= 120
-    && isString(item.contact) && item.contact.length <= 160 && isDate(item.createdAt)) || !hasUnique(value.referrers, item => item.id)) return false
+    && isString(item.contact) && item.contact.length <= 160 && isDate(item.createdAt)
+    // note and archivedAt were added with the referrer ledger; older records simply omit them.
+    && (item.note === undefined || (isString(item.note) && item.note.length <= 400))
+    && (item.archivedAt === undefined || isNullableDate(item.archivedAt))) || !hasUnique(value.referrers, item => item.id)) return false
   const referrerIds = new Set(value.referrers.map(item => (item as Record<string, unknown>).id))
   const linkedAccounts = new Set<string>()
   const paymentIds = new Set<string>()
@@ -91,16 +96,33 @@ export function isWorkspace(value: unknown): value is Workspace {
   return true
 }
 
+/**
+ * Fill fields that were added after a record was first saved, so the rest of the
+ * app can rely on them being present. Nothing is invented: a missing note is empty
+ * and a missing monthly target stays null.
+ */
+export function normaliseWorkspace(workspace: Workspace): Workspace {
+  const settings = workspace.settings as Workspace['settings'] & { monthlyTarget?: number | null }
+  return {
+    ...workspace,
+    settings: { autoCopy: settings.autoCopy, monthlyTarget: settings.monthlyTarget ?? null },
+    referrers: workspace.referrers.map(referrer => {
+      const record = referrer as Workspace['referrers'][number] & { note?: string; archivedAt?: string | null }
+      return { ...record, note: record.note ?? '', archivedAt: record.archivedAt ?? null }
+    }),
+  }
+}
+
 /** Validate first, then migrate old records with an unknown price rather than guessing. */
 export function decodeWorkspace(value: unknown): Workspace | null {
-  if (isWorkspace(value)) return value
+  if (isWorkspace(value)) return normaliseWorkspace(value)
   if (!hasValidCore(value, 1)) return null
   const migrated = {
     ...value, version: 2,
     sales: (value.sales as Record<string, unknown>[]).map(sale => ({ ...sale, packagePriceCents: null })),
     referrers: [], referrals: [],
   }
-  return isWorkspace(migrated) ? migrated : null
+  return isWorkspace(migrated) ? normaliseWorkspace(migrated) : null
 }
 
 export interface LoadResult { workspace: Workspace; warning: string | null; canSave: boolean; migratedFromLegacy?: boolean }

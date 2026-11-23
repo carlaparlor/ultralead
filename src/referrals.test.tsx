@@ -8,7 +8,7 @@ import { createEmptyWorkspace, editSale, recordSale, updateSaleStage } from './d
 
 const dialog = () => within(screen.getByRole('dialog'))
 const referralRow = (name: string) => within(screen.getByRole('article', { name: `Referral for ${name}` }))
-const openReferrals = () => fireEvent.click(screen.getByRole('button', { name: /Referrals/ }))
+const openReferrals = () => fireEvent.click(screen.getByRole('button', { name: /Referrers/ }))
 const cleanWorkspace = () => {
   const workspace = createEmptyWorkspace(new Date())
   workspace.settings.autoCopy = false
@@ -91,6 +91,8 @@ describe('referral workflow', () => {
     fireEvent.click(referralRow('New Customer').getByRole('button', { name: /MARK PAID/ }))
     expect(dialog().getByText(/after you have sent the money yourself/)).toBeInTheDocument()
     fireEvent.click(dialog().getByRole('button', { name: 'MARK AS PAID' }))
+    // Paid referrals are tucked away by default to keep the list useful.
+    fireEvent.click(screen.getByRole('button', { name: 'SHOW 1 PAID' }))
     expect(referralRow('New Customer').getByText('Paid', { selector: '.status-pill' })).toBeInTheDocument()
     expect(referralRow('New Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!)
@@ -156,7 +158,8 @@ describe('referral workflow', () => {
     fireEvent.change(dialog().getByLabelText(/CUSTOMER 5- ACCOUNT/), { target: { value: '' } })
     fireEvent.click(dialog().getByRole('button', { name: 'ADD REFERRAL' }))
     expect(referralRow('Same Account').getByText('First Referrer')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'First Referrer' }).closest('article')).toHaveTextContent('02')
+    // The ledger card counts referrals in words now, not a bare two-digit number.
+    expect(screen.getByRole('heading', { name: 'First Referrer' }).closest('article')).toHaveTextContent('2 referrals')
   })
 
   it.each([
@@ -189,8 +192,8 @@ describe('referral workflow', () => {
     expect(row()).toHaveTextContent('additional payments or refunds cannot be recorded here')
     expect(referralRow('Price Review Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
     const summary = within(screen.getByRole('region', { name: 'Referral summary' }))
-    expect(summary.getByText('READY TO PAY').parentElement).toHaveTextContent('R0.00')
-    expect(summary.getByText('PAID TO DATE').parentElement).toHaveTextContent(paid)
+    expect(summary.getByText(/^OWED TO REFERRERS$/).parentElement).toHaveTextContent('R0.00')
+    expect(summary.getByText(/^PAID IN /).parentElement).toHaveTextContent(paid)
 
     fireEvent.click(referralRow('Price Review Customer').getByRole('button', { name: 'PAYMENT HISTORY' }))
     expect(screen.getByRole('dialog')).toHaveTextContent(`Original deal · ${original === 20_000 ? 'R200.00' : 'R200.01'}`)
@@ -207,9 +210,80 @@ describe('referral workflow', () => {
     fireEvent.change(dialog().getByLabelText(/DEAL PRICE/), { target: { value: original === 20_000 ? '200.00' : '200.01' } })
     fireEvent.click(dialog().getByRole('button', { name: 'SAVE CHANGES' }))
     openReferrals()
+    fireEvent.click(screen.getByRole('button', { name: 'SHOW 1 PAID' }))
     expect(referralRow('Price Review Customer').getByText('Paid', { selector: '.status-pill' })).toBeInTheDocument()
     expect(row()).not.toHaveTextContent('Payment needs review')
     expect(referralRow('Price Review Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
+  })
+
+  it('adds a referrer with a note, shows what you owe them, and can hide them without losing history', () => {
+    const now = new Date()
+    const lead = makeLead('5-780', { name: 'Ledger Customer' })
+    let ws = { ...createEmptyWorkspace(now), leads: [lead] }
+    ws = recordSale(ws, lead, 'Ledger deal', now, 24_900)
+    const saleId = ws.sales[0].id
+    ws = updateSaleStage(updateSaleStage(ws, saleId, 'pending_confirmation', now), saleId, 'activated', now, 'ATT')
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+    openReferrals()
+
+    // A person is added from the page header, with a note for context.
+    fireEvent.click(screen.getByRole('button', { name: /ADD REFERRER/ }))
+    fireEvent.change(dialog().getByLabelText(/^NAME/), { target: { value: 'Nandi Molefe' } })
+    fireEvent.change(dialog().getByLabelText(/^CONTACT/), { target: { value: '082 000 0101' } })
+    fireEvent.change(dialog().getByLabelText(/^NOTE/), { target: { value: 'Prefers a WhatsApp.' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'ADD REFERRER' }))
+    const card = () => within(screen.getByRole('article', { name: 'Ledger for Nandi Molefe' }))
+    expect(card().getByText('Prefers a WhatsApp.')).toBeInTheDocument()
+    expect(card().getByText('082 000 0101')).toBeInTheDocument()
+    expect(card().getByText('0 referrals')).toBeInTheDocument()
+    fireEvent.click(card().getByRole('button', { name: 'SEE THE CUSTOMERS' }))
+    expect(card().getByText('No customers linked yet. Add a referral and they will appear here.')).toBeInTheDocument()
+    fireEvent.click(card().getByRole('button', { name: /HIDE CUSTOMERS/ }))
+
+    // Attach a customer to her; the ledger shows the money and the customer behind it.
+    fireEvent.click(screen.getAllByRole('button', { name: 'ADD REFERRAL' })[0])
+    fireEvent.change(dialog().getByLabelText(/WHO REFERRED THEM/), { target: { value: JSON.parse(localStorage.getItem(STORAGE_KEY)!).referrers[0].id } })
+    fireEvent.change(dialog().getByLabelText(/CUSTOMER NAME/), { target: { value: 'Ledger Customer' } })
+    fireEvent.change(dialog().getByLabelText(/CUSTOMER 5- ACCOUNT/), { target: { value: '5-780' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'ADD REFERRAL' }))
+    const summary = within(screen.getByRole('region', { name: 'Referral summary' }))
+    expect(summary.getByText(/^OWED TO REFERRERS$/).parentElement).toHaveTextContent('R30.00')
+    // Owed now and earned this month are separate lines that happen to agree.
+    expect(card().getAllByText('R30.00')).toHaveLength(2)
+    expect(card().getByText('1 ready to pay')).toBeInTheDocument()
+    fireEvent.click(card().getByRole('button', { name: /SEE THE CUSTOMERS/ }))
+    expect(card().getByText('Ledger Customer')).toBeInTheDocument()
+    expect(card().getByText('Ready to pay')).toBeInTheDocument()
+    expect(card().getByText(/activated/)).toBeInTheDocument()
+    fireEvent.click(card().getByRole('button', { name: /HIDE CUSTOMERS/ }))
+
+    // Editing keeps the note.
+    fireEvent.click(card().getByRole('button', { name: 'Edit referrer Nandi Molefe' }))
+    fireEvent.change(dialog().getByLabelText(/^NOTE/), { target: { value: 'Prefers a call on Fridays.' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'SAVE CHANGES' }))
+    expect(card().getByText('Prefers a call on Fridays.')).toBeInTheDocument()
+
+    // Hiding keeps every record, and someone you still owe never drops out of the ledger.
+    fireEvent.click(card().getByRole('button', { name: 'Hide referrer Nandi Molefe' }))
+    expect(screen.getByText(/hidden from the active list/)).toBeInTheDocument()
+    expect(card().getByText('HIDDEN')).toBeInTheDocument()
+    expect(card().getByText('1 ready to pay')).toBeInTheDocument()
+
+    // Once she has been paid, a hidden referrer leaves the working list but stays reachable.
+    fireEvent.click(referralRow('Ledger Customer').getByRole('button', { name: /MARK PAID/ }))
+    fireEvent.click(dialog().getByRole('button', { name: 'MARK AS PAID' }))
+    expect(screen.queryByRole('article', { name: 'Ledger for Nandi Molefe' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'SHOW HIDDEN PEOPLE' }))
+    // Earned and paid to date keep the money; nothing is owed any more.
+    expect(card().getAllByText('R30.00')).toHaveLength(2)
+    expect(card().getByText('R0.00')).toBeInTheDocument()
+    expect(card().getByText('nothing outstanding')).toBeInTheDocument()
+    expect(card().getByText(/last /)).toBeInTheDocument()
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)!)
+    expect(saved.referrers[0]).toMatchObject({ note: 'Prefers a call on Fridays.', archivedAt: expect.any(String) })
+    expect(saved.referrals).toHaveLength(1)
+    expect(saved.referrals[0].payments).toHaveLength(1)
   })
 
   it('does not add an absent referral if another tab marks the customer not interested', () => {
@@ -240,9 +314,9 @@ describe('referral workflow', () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
     render(<App />)
     openReferrals()
-    expect(screen.getAllByRole('article', { name: /^Referral for/ })).toHaveLength(30)
+    expect(screen.getAllByRole('article', { name: /^Referral for/ })).toHaveLength(25)
     fireEvent.click(screen.getByRole('button', { name: 'Next referrals page' }))
-    expect(screen.getAllByRole('article', { name: /^Referral for/ })).toHaveLength(5)
+    expect(screen.getAllByRole('article', { name: /^Referral for/ })).toHaveLength(10)
     fireEvent.change(screen.getByLabelText('Search referrals'), { target: { value: 'Referral 34' } })
     expect(referralRow('Referral 34').getByText('Referral 34')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Next referrals page' })).not.toBeInTheDocument()
@@ -266,6 +340,7 @@ describe('referral workflow', () => {
       fireEvent.click(dialog().getByRole('button', { name: 'MARK AS PAID' }))
       expect(screen.getByText(/Payment marked paid in this session only/)).toBeInTheDocument()
       expect(screen.getByRole('alert')).toHaveTextContent('Browser storage is full or unavailable')
+      fireEvent.click(screen.getByRole('button', { name: 'SHOW 1 PAID' }))
       expect(referralRow('Storage Customer').getByText('Paid', { selector: '.status-pill' })).toBeInTheDocument()
       expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).referrals[0].payments).toEqual([])
     } finally { failedSave.mockRestore() }

@@ -159,7 +159,7 @@ describe('calling workflow', () => {
     expect(dialog().getByLabelText(/CUSTOMER NOTES/)).toHaveValue('Prefers Friday delivery')
   })
 
-  it('shows calling insights for the chosen period', () => {
+  it('reviews this calendar month and can look back at an earlier one', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     try {
       const now = new Date(2026, 9, 28, 10)
@@ -168,26 +168,46 @@ describe('calling workflow', () => {
       let ws = { ...createEmptyWorkspace(now), leads: [a, b] }
       ws = recordNotInterested(ws, a, now)
       ws = recordNoAnswer(ws, b, new Date(now.getTime() - 2 * 60 * 60 * 1000))
-      ws = recordSale(ws, b, 'Insight Deal', now)
+      ws = recordSale(ws, b, 'Insight Deal', now, 19_900)
       const saleId = ws.sales[0].id
       ws = updateSaleStage(ws, saleId, 'pending_confirmation', now)
       ws = updateSaleStage(ws, saleId, 'activated', now, 'ATT')
       localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
       render(<App />)
-      fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
-      expect(screen.getByRole('heading', { name: 'Insights' })).toBeInTheDocument()
-      // Today: three attempts (not interested, no answer, sale)
-      expect(screen.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
+      fireEvent.click(screen.getByRole('button', { name: /Monthly review/ }))
+      expect(screen.getByRole('heading', { name: 'Monthly review' })).toBeInTheDocument()
+      // The month, not a rolling window: one activation and three calls, all today.
+      expect(screen.getByTestId('headline-activations')).toHaveTextContent('01')
+      expect(screen.getByText('CALLS').parentElement).toHaveTextContent('3')
       expect(screen.getByText('SALES').parentElement).toHaveTextContent('1')
-      expect(screen.getByText('ACTIVATIONS').parentElement).toHaveTextContent('1')
-      expect(screen.getByText('ATT vs non-ATT')).toBeInTheDocument()
-      expect(screen.getAllByText(/Insight Deal/).length).toBeGreaterThan(0)
-      // Narrow the period to today, then widen it: the counts follow the window.
-      fireEvent.click(screen.getByRole('button', { name: 'TODAY' }))
-      expect(screen.getByRole('button', { name: 'TODAY' })).toHaveAttribute('aria-pressed', 'true')
-      expect(screen.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
-      fireEvent.click(screen.getByRole('button', { name: 'ALL TIME' }))
-      expect(screen.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
+      expect(screen.getByText('R199.00 of activated business')).toBeInTheDocument()
+      expect(screen.getByLabelText('Review month')).toHaveValue('2026-10')
+      // Only the current month has work, so there is nowhere older to go.
+      expect(screen.getByRole('button', { name: 'Older month' })).toBeDisabled()
+    } finally { vi.useRealTimers() }
+  })
+
+  it('lets the monthly review look back at a previous month', () => {
+    const now = new Date(2026, 9, 28, 10)
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+    vi.setSystemTime(now)
+    const september = new Date(2026, 8, 12, 10)
+    const lead = makeLead('5-883', { name: 'September Person' })
+    let ws = { ...createEmptyWorkspace(now), leads: [lead] }
+    ws = recordSale(ws, lead, 'Old Deal', september, 24_900)
+    const saleId = ws.sales[0].id
+    ws = updateSaleStage(ws, saleId, 'pending_confirmation', september)
+    ws = updateSaleStage(ws, saleId, 'activated', september, 'Non-ATT')
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /Monthly review/ }))
+    // October has no work at all.
+    expect(screen.getByRole('heading', { name: /Nothing logged in October 2026 yet/ })).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Review month'), { target: { value: '2026-09' } })
+    expect(screen.getByTestId('headline-activations')).toHaveTextContent('01')
+    expect(screen.getByText('R249.00 of activated business')).toBeInTheDocument()
+    expect(screen.getByText('SEPTEMBER 2026 · 30 DAYS · EVERYTHING IS FROM THIS LOCAL WORKSPACE')).toBeInTheDocument()
     } finally { vi.useRealTimers() }
   })
 

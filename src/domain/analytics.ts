@@ -1,43 +1,21 @@
+import { dayOfMonthLabel } from './dates'
+import { referralRewardCents } from './money'
+import { monthWindow, shiftMonth, startOfMonth, type MonthWindow } from './month'
+import { createReferralIndex, referralState } from './referrals'
 import type { CallOutcome, Sale, Workspace } from './types'
 
-/** Rolling windows measured from the local day, so "today" matches the calling desk. */
-export type AnalysisRange = 'today' | 'week' | 'month' | 'all'
-
-export const RANGE_LABELS: Record<AnalysisRange, string> = {
-  today: 'TODAY', week: '7 DAYS', month: '30 DAYS', all: 'ALL TIME',
-}
-
-const RANGE_DAYS: Record<Exclude<AnalysisRange, 'all'>, number> = { today: 1, week: 7, month: 30 }
-
-export function startOfLocalDay(value: Date): Date {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate())
-}
-
-export function addLocalDays(value: Date, days: number): Date {
-  return new Date(value.getFullYear(), value.getMonth(), value.getDate() + days, value.getHours(), value.getMinutes(), value.getSeconds(), value.getMilliseconds())
-}
-
-/** The window's inclusive start. `all` has no start. */
-export function rangeStart(range: AnalysisRange, now: Date): Date | null {
-  if (range === 'all') return null
-  return addLocalDays(startOfLocalDay(now), -(RANGE_DAYS[range] - 1))
-}
-
-export interface CallTally {
-  attempts: number
-  noAnswer: number
-  notInterested: number
-  callback: number
-  sale: number
-  customers: number
-}
-
-export interface SeriesPoint {
+/**
+ * The monthly review is deliberately narrow: what was sold and activated this
+ * calendar month, what it is worth, and what you still owe a referrer. Everything
+ * is derived from the same records the rest of the app writes, so two screens can
+ * never disagree and nothing drifts out of date.
+ */
+export interface DayPoint {
   key: string
+  /** Day of the month, 1-based. */
+  day: number
   label: string
-  from: Date
-  to: Date
-  attempts: number
+  calls: number
   noAnswer: number
   notInterested: number
   callback: number
@@ -45,229 +23,268 @@ export interface SeriesPoint {
   activations: number
 }
 
-export interface FunnelStep { label: string; value: number; share: number }
-
-export interface Analysis {
-  range: AnalysisRange
-  from: Date | null
-  calls: CallTally
-  answered: number
-  /** Calls that reached a conversation, as a share of all attempts. */
+export interface MonthTotals {
+  calls: number
+  reached: number
   contactRate: number
-  /** Sales recorded, as a share of conversations. */
-  conversionRate: number
-  salesRecorded: number
+  customers: number
+  sales: number
+  salesValueCents: number
+  unpricedSales: number
   activations: number
-  series: SeriesPoint[]
-  bucketLabel: string
-  funnel: { recorded: number; inVetting: number; awaitingConfirmation: number; activated: number; declined: number; activationRate: number; steps: FunnelStep[] }
+  activationValueCents: number
+  /** Completed activations with no price, which can earn no reward and add no value. */
+  unpricedActivations: number
+  att: number
+  nonAtt: number
+  declined: number
+  declinedValueCents: number
+  openSales: number
+  openValueCents: number
   daysToActivate: number | null
-  att: { att: number; nonAtt: number }
-  packages: { name: string; sales: number; activated: number }[]
-  previous: { calls: number; sales: number; activations: number; contactRate: number } | null
+}
+
+export interface MonthReview {
+  window: MonthWindow
   hasActivity: boolean
+  totals: MonthTotals
+  /** Sales recorded divided by conversations reached. */
+  conversionRate: number
+  /** Completed activations divided by decided sales (activated + declined). */
+  activationRate: number
+  activeDays: number
+  callsPerActiveDay: number
+  bestDay: { day: number; label: string; calls: number } | null
+  daily: DayPoint[]
+  rewards: {
+    /** Rewards that this month's activations will earn their referrer. */
+    earnedCents: number
+    /** Owed to a referrer right now, regardless of when it was earned. */
+    dueCents: number
+    dueCount: number
+    /** Payments recorded in this month. */
+    paidCents: number
+    paidCount: number
+  }
+  /** The same span of the month before, so a half-finished month is never compared with a full one. */
+  previous: MonthTotals
+  /** Completed activations still needed to reach the optional monthly target. */
+  target: { value: number; remaining: number; share: number } | null
 }
 
-const emptyTally = (): CallTally => ({ attempts: 0, noAnswer: 0, notInterested: 0, callback: 0, sale: 0, customers: 0 })
+const emptyTotals = (): MonthTotals => ({
+  calls: 0, reached: 0, contactRate: 0, customers: 0, sales: 0, salesValueCents: 0, unpricedSales: 0,
+  activations: 0, activationValueCents: 0, unpricedActivations: 0, att: 0, nonAtt: 0, declined: 0, declinedValueCents: 0,
+  openSales: 0, openValueCents: 0, daysToActivate: null,
+})
 
-function inWindow(value: string, from: Date | null, to: Date): boolean {
-  const time = new Date(value).getTime()
-  if (Number.isNaN(time) || time > to.getTime()) return false
-  return from === null || time >= from.getTime()
-}
+const share = (part: number, whole: number) => (whole > 0 ? part / whole : 0)
+const answeredOutcomes: CallOutcome[] = ['not_interested', 'callback', 'sale']
 
 interface AttemptRow { account: string; at: string; outcome: CallOutcome }
 
-function attemptsIn(workspace: Workspace, from: Date | null, to: Date): AttemptRow[] {
+function inSpan(value: string | null | undefined, from: Date, to: Date, inclusive = false): boolean {
+  if (!value) return false
+  const time = new Date(value).getTime()
+  if (Number.isNaN(time)) return false
+  return time >= from.getTime() && (inclusive ? time <= to.getTime() : time < to.getTime())
+}
+
+function attemptsIn(workspace: Workspace, from: Date, to: Date, inclusive = false): AttemptRow[] {
   const rows: AttemptRow[] = []
   for (const [account, profile] of Object.entries(workspace.profiles)) {
-    for (const attempt of profile.attempts) {
-      if (inWindow(attempt.at, from, to)) rows.push({ account, at: attempt.at, outcome: attempt.outcome })
-    }
+    for (const attempt of profile.attempts) if (inSpan(attempt.at, from, to, inclusive)) rows.push({ account, at: attempt.at, outcome: attempt.outcome })
   }
   return rows
 }
 
-function tally(rows: AttemptRow[]): CallTally {
-  const calls = emptyTally()
+function salesIn(workspace: Workspace, from: Date, to: Date, inclusive = false): Sale[] {
+  return workspace.sales.filter(sale => inSpan(sale.createdAt, from, to, inclusive))
+}
+
+function activationsIn(workspace: Workspace, from: Date, to: Date, inclusive = false): Sale[] {
+  return workspace.sales.filter(sale => sale.stage === 'activated' && inSpan(sale.activatedAt, from, to, inclusive))
+}
+
+const knownPrice = (sale: Sale) => (sale.packagePriceCents === null ? null : sale.packagePriceCents)
+const sumPrices = (sales: Sale[]) => sales.reduce((total, sale) => total + (knownPrice(sale) ?? 0), 0)
+
+function attemptTotals(rows: AttemptRow[]): { calls: number; reached: number; customers: number } {
   const customers = new Set<string>()
+  let reached = 0
   for (const row of rows) {
-    calls.attempts++
     customers.add(row.account)
-    if (row.outcome === 'no_answer') calls.noAnswer++
-    else if (row.outcome === 'not_interested') calls.notInterested++
-    else if (row.outcome === 'callback') calls.callback++
-    else if (row.outcome === 'sale') calls.sale++
+    if (answeredOutcomes.includes(row.outcome)) reached++
   }
-  calls.customers = customers.size
-  return calls
+  return { calls: rows.length, reached, customers: customers.size }
 }
 
-const answeredCount = (calls: CallTally) => calls.notInterested + calls.callback + calls.sale
-const share = (part: number, whole: number) => (whole > 0 ? part / whole : 0)
+/** One month's numbers, all measured inside the window's span. */
+function totalsIn(workspace: Workspace, window: MonthWindow): MonthTotals {
+  const { start: from, end: to, endInclusive: inclusive } = window
+  const totals = emptyTotals()
+  const attemptRows = attemptsIn(workspace, from, to, inclusive)
+  const attempts = attemptTotals(attemptRows)
+  totals.calls = attempts.calls
+  totals.reached = attempts.reached
+  totals.customers = attempts.customers
+  totals.contactRate = share(attempts.reached, attempts.calls)
 
-/** Buckets: hourly blocks for today, days for a week or a month, weeks for all time. */
-function buildBuckets(range: AnalysisRange, now: Date, earliest: Date | null): { from: Date; to: Date; label: string }[] {
-  const buckets: { from: Date; to: Date; label: string }[] = []
-  const end = now
-  if (range === 'today') {
-    const day = startOfLocalDay(now)
-    for (let hour = 0; hour < 24; hour += 3) {
-      buckets.push({
-        from: new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour),
-        to: new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour + 3),
-        label: `${String(hour).padStart(2, '0')}`,
-      })
+  const recorded = salesIn(workspace, from, to, inclusive)
+  totals.sales = recorded.length
+  totals.salesValueCents = sumPrices(recorded)
+  totals.unpricedSales = recorded.filter(sale => sale.packagePriceCents === null).length
+  for (const sale of recorded) {
+    if (sale.stage === 'declined') {
+      totals.declined++
+      totals.declinedValueCents += knownPrice(sale) ?? 0
+    } else if (sale.stage !== 'activated') {
+      // Still in vetting or awaiting confirmation: money that could still land.
+      totals.openSales++
+      totals.openValueCents += knownPrice(sale) ?? 0
     }
-    return buckets
   }
-  if (range === 'week' || range === 'month') {
-    const days = RANGE_DAYS[range]
-    for (let index = days - 1; index >= 0; index--) {
-      const day = addLocalDays(startOfLocalDay(now), -index)
-      const next = addLocalDays(startOfLocalDay(now), -index + 1)
-      buckets.push({
-        from: day,
-        to: next,
-        label: new Intl.DateTimeFormat('en-ZA', { day: 'numeric', month: 'short' }).format(day),
-      })
-    }
-    return buckets
-  }
-  // All time: twelve weekly blocks ending now, trimmed to the first week with data.
-  for (let index = 11; index >= 0; index--) {
-    const to = index === 0 ? end : new Date(end.getTime() - index * 7 * 86_400_000)
-    const from = new Date(to.getTime() - 7 * 86_400_000)
-    buckets.push({ from, to, label: new Intl.DateTimeFormat('en-ZA', { day: 'numeric', month: 'short' }).format(from) })
-  }
-  if (earliest) {
-    while (buckets.length > 1 && buckets[0].to.getTime() <= earliest.getTime()) buckets.shift()
-  }
-  return buckets
+
+  const activated = activationsIn(workspace, from, to, inclusive)
+  totals.activations = activated.length
+  totals.activationValueCents = sumPrices(activated)
+  totals.unpricedActivations = activated.filter(sale => sale.packagePriceCents === null).length
+  totals.att = activated.filter(sale => sale.activationType === 'ATT').length
+  totals.nonAtt = activated.filter(sale => sale.activationType === 'Non-ATT').length
+
+  const durations = activated
+    .map(sale => (new Date(sale.activatedAt!).getTime() - new Date(sale.createdAt).getTime()) / 86_400_000)
+    .filter(days => days >= 0)
+  totals.daysToActivate = durations.length ? durations.reduce((total, days) => total + days, 0) / durations.length : null
+  return totals
 }
 
-function bucketise(rows: AttemptRow[], sales: Sale[], buckets: { from: Date; to: Date; label: string }[]): SeriesPoint[] {
-  return buckets.map((bucket, index) => {
-    const point: SeriesPoint = {
-      key: `${index}-${bucket.label}`, label: bucket.label, from: bucket.from, to: bucket.to,
-      attempts: 0, noAnswer: 0, notInterested: 0, callback: 0, sale: 0, activations: 0,
-    }
-    for (const row of rows) {
-      const time = new Date(row.at).getTime()
-      if (time < bucket.from.getTime() || time >= bucket.to.getTime()) continue
-      point.attempts++
-      if (row.outcome === 'no_answer') point.noAnswer++
-      else if (row.outcome === 'not_interested') point.notInterested++
-      else if (row.outcome === 'callback') point.callback++
-      else if (row.outcome === 'sale') point.sale++
-    }
-    for (const sale of sales) {
-      if (!sale.activatedAt) continue
-      const time = new Date(sale.activatedAt).getTime()
-      if (time >= bucket.from.getTime() && time < bucket.to.getTime()) point.activations++
-    }
-    return point
-  })
+function dailyPoints(workspace: Workspace, window: MonthWindow, now: Date): DayPoint[] {
+  const points: DayPoint[] = []
+  const lastDay = window.isCurrent ? now.getDate() : window.days
+  const rows = attemptsIn(workspace, window.start, window.end, window.endInclusive)
+  for (let day = 1; day <= lastDay; day++) {
+    points.push({ key: `${window.key}-${day}`, day, label: String(day), calls: 0, noAnswer: 0, notInterested: 0, callback: 0, sale: 0, activations: 0 })
+  }
+  const bucket = (value: string) => {
+    const date = new Date(value)
+    return points[date.getDate() - 1]
+  }
+  for (const row of rows) {
+    const point = bucket(row.at)
+    if (!point) continue
+    point.calls++
+    if (row.outcome === 'no_answer') point.noAnswer++
+    else if (row.outcome === 'not_interested') point.notInterested++
+    else if (row.outcome === 'callback') point.callback++
+    else if (row.outcome === 'sale') point.sale++
+  }
+  for (const sale of workspace.sales) {
+    if (sale.stage !== 'activated' || !sale.activatedAt || !inSpan(sale.activatedAt, window.start, window.end, window.endInclusive)) continue
+    const point = bucket(sale.activatedAt)
+    if (point) point.activations++
+  }
+  return points
 }
 
-function earliestAttempt(workspace: Workspace): Date | null {
+/**
+ * Referral money for a month, using the same derived states as the referrer ledger
+ * so the two pages can never disagree about what is earned, owed or paid.
+ */
+function rewardTotals(workspace: Workspace, window: MonthWindow, now: Date) {
+  const index = createReferralIndex(workspace)
+  let earnedCents = 0
+  let dueCents = 0
+  let dueCount = 0
+  let paidCents = 0
+  let paidCount = 0
+  for (const referral of workspace.referrals) {
+    const state = referralState(workspace, referral, now, index)
+    if (state.status === 'ready') {
+      dueCents += state.dueCents
+      dueCount++
+    }
+    // Money earned in the month, whether or not it has been paid yet.
+    if (state.sale?.stage === 'activated' && state.sale.packagePriceCents !== null
+      && inSpan(state.sale.activatedAt, window.start, window.end, window.endInclusive)) {
+      const reward = referralRewardCents(state.sale.packagePriceCents)
+      if (reward !== null) earnedCents += reward
+    }
+    for (const payment of referral.payments) {
+      if (payment.voidedAt !== null || !inSpan(payment.paidAt, window.start, window.end, window.endInclusive)) continue
+      paidCents += payment.amountCents
+      paidCount++
+    }
+  }
+  return { earnedCents, dueCents, dueCount, paidCents, paidCount }
+}
+
+export function reviewMonth(workspace: Workspace, anchor: Date, now: Date): MonthReview {
+  const window = monthWindow(anchor, now)
+  const totals = totalsIn(workspace, window)
+  const daily = dailyPoints(workspace, window, now)
+  const activeDays = daily.filter(point => point.calls > 0).length
+  const best = daily.reduce<DayPoint | null>((best, point) => (point.calls > (best?.calls ?? 0) ? point : best), null)
+  const decided = totals.activations + totals.declined
+  // The comparison span is always a closed past stretch, so it is never inclusive at "now".
+  const previous = totalsIn(workspace, { ...window, start: window.compareStart, end: window.compareEnd, endInclusive: false })
+  const targetValue = workspace.settings.monthlyTarget ?? null
+  const hasActivity = totals.calls > 0 || totals.sales > 0 || totals.activations > 0
+    || workspace.referrals.some(referral => referral.payments.some(payment => inSpan(payment.paidAt, window.start, window.end, window.endInclusive)))
+  return {
+    window, hasActivity, totals,
+    conversionRate: share(totals.sales, totals.reached),
+    activationRate: share(totals.activations, decided),
+    activeDays,
+    callsPerActiveDay: activeDays ? totals.calls / activeDays : 0,
+    bestDay: best ? { day: best.day, label: dayOfMonthLabel(best.day, window.start), calls: best.calls } : null,
+    daily,
+    rewards: rewardTotals(workspace, window, now),
+    previous,
+    target: targetValue === null || targetValue <= 0
+      ? null
+      : { value: targetValue, remaining: Math.max(0, targetValue - totals.activations), share: Math.min(1, totals.activations / targetValue) },
+  }
+}
+
+export interface MonthOption { key: string; label: string; anchor: Date }
+
+/** The current month plus the months before it that hold any recorded work. */
+export function recentMonths(workspace: Workspace, now: Date, limit = 12): MonthOption[] {
+  const earliest = earliestRecord(workspace)
+  const months: MonthOption[] = []
+  const thisMonth = startOfMonth(now)
+  for (let index = 0; index < limit; index++) {
+    const anchor = shiftMonth(thisMonth, -index)
+    const next = shiftMonth(thisMonth, -index + 1)
+    // Stop once a whole month lies before the first thing ever recorded.
+    if (index > 0 && (earliest === null || earliest.getTime() >= next.getTime())) break
+    months.push({ key: `${anchor.getFullYear()}-${String(anchor.getMonth() + 1).padStart(2, '0')}`, label: monthWindow(anchor, now).label, anchor })
+  }
+  return months
+}
+
+function earliestRecord(workspace: Workspace): Date | null {
   let earliest: Date | null = null
-  for (const profile of Object.values(workspace.profiles)) {
-    for (const attempt of profile.attempts) {
-      const time = new Date(attempt.at)
-      if (Number.isNaN(time.getTime())) continue
-      if (!earliest || time.getTime() < earliest.getTime()) earliest = time
-    }
+  const consider = (value: string | null | undefined) => {
+    if (!value) return
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return
+    if (!earliest || date.getTime() < earliest.getTime()) earliest = date
   }
+  for (const profile of Object.values(workspace.profiles)) for (const attempt of profile.attempts) consider(attempt.at)
+  for (const sale of workspace.sales) { consider(sale.createdAt); consider(sale.activatedAt) }
+  for (const referral of workspace.referrals) for (const payment of referral.payments) consider(payment.paidAt)
   return earliest
 }
 
-export function analyse(workspace: Workspace, range: AnalysisRange, now: Date): Analysis {
-  const from = rangeStart(range, now)
-  const rows = attemptsIn(workspace, from, now)
-  const calls = tally(rows)
-  const answered = answeredCount(calls)
-
-  const salesInRange = workspace.sales.filter(sale => inWindow(sale.createdAt, from, now))
-  const activationsInRange = workspace.sales.filter(sale => sale.activatedAt !== null && inWindow(sale.activatedAt, from, now))
-
-  const activated = salesInRange.filter(sale => sale.stage === 'activated').length
-  const declined = salesInRange.filter(sale => sale.stage === 'declined').length
-  const awaitingConfirmation = salesInRange.filter(sale => sale.stage === 'pending_confirmation').length
-  const inVetting = salesInRange.filter(sale => sale.stage === 'credit_vetting').length
-  const decided = activated + declined
-
-  const durations = activationsInRange
-    .filter(sale => sale.activatedAt)
-    .map(sale => (new Date(sale.activatedAt!).getTime() - new Date(sale.createdAt).getTime()) / 86_400_000)
-    .filter(days => days >= 0)
-
-  const packageMap = new Map<string, { name: string; sales: number; activated: number }>()
-  for (const sale of workspace.sales) {
-    if (!inWindow(sale.createdAt, from, now)) continue
-    const entry = packageMap.get(sale.packageName.toLowerCase()) ?? { name: sale.packageName, sales: 0, activated: 0 }
-    entry.sales++
-    if (sale.stage === 'activated') entry.activated++
-    packageMap.set(sale.packageName.toLowerCase(), entry)
-  }
-
-  const att = activationsInRange.filter(sale => sale.activationType === 'ATT').length
-  const nonAtt = activationsInRange.filter(sale => sale.activationType === 'Non-ATT').length
-
-  const earliest = earliestAttempt(workspace)
-  const series = bucketise(rows, workspace.sales, buildBuckets(range, now, earliest))
-
-  // Comparison window: the same length immediately before this one.
-  let previous: Analysis['previous'] = null
-  if (range !== 'all') {
-    const days = RANGE_DAYS[range]
-    const previousFrom = addLocalDays(from!, -days)
-    const previousTo = new Date(from!.getTime() - 1)
-    const previousCalls = tally(attemptsIn(workspace, previousFrom, previousTo))
-    previous = {
-      calls: previousCalls.attempts,
-      sales: workspace.sales.filter(sale => inWindow(sale.createdAt, previousFrom, previousTo)).length,
-      activations: workspace.sales.filter(sale => sale.activatedAt && inWindow(sale.activatedAt, previousFrom, previousTo)).length,
-      contactRate: share(answeredCount(previousCalls), previousCalls.attempts),
-    }
-  }
-
-  const steps: FunnelStep[] = [
-    { label: 'Sales recorded', value: salesInRange.length, share: 1 },
-    { label: 'Vetting approved', value: awaitingConfirmation + activated, share: share(awaitingConfirmation + activated, salesInRange.length) },
-    { label: 'Activated', value: activated, share: share(activated, salesInRange.length) },
-  ]
-
-  return {
-    range, from, calls, answered,
-    contactRate: share(answered, calls.attempts),
-    conversionRate: share(calls.sale, answered),
-    salesRecorded: salesInRange.length,
-    activations: activationsInRange.length,
-    series,
-    bucketLabel: range === 'today' ? 'EVERY 3 HOURS' : range === 'all' ? 'LAST 12 WEEKS' : range === 'week' ? 'LAST 7 DAYS' : 'LAST 30 DAYS',
-    funnel: {
-      recorded: salesInRange.length, inVetting, awaitingConfirmation, activated, declined,
-      activationRate: share(activated, decided), steps,
-    },
-    daysToActivate: durations.length ? durations.reduce((total, days) => total + days, 0) / durations.length : null,
-    att: { att, nonAtt },
-    packages: [...packageMap.values()].sort((a, b) => b.sales - a.sales || a.name.localeCompare(b.name)),
-    previous,
-    hasActivity: calls.attempts > 0 || salesInRange.length > 0 || activationsInRange.length > 0,
-  }
-}
-
-/** Percentage-point or relative change, rendered as a small trend note. */
+/** Relative change between two months, rendered as a short note next to a figure. */
 export function change(current: number, previous: number): { direction: 'up' | 'down' | 'flat'; text: string } {
   if (previous === 0 && current === 0) return { direction: 'flat', text: 'no change' }
   if (previous === 0) return { direction: 'up', text: 'new' }
   const delta = (current - previous) / previous
   if (Math.abs(delta) < 0.005) return { direction: 'flat', text: 'no change' }
-  return {
-    direction: delta > 0 ? 'up' : 'down',
-    text: `${delta > 0 ? '+' : ''}${Math.round(delta * 100)}%`,
-  }
+  return { direction: delta > 0 ? 'up' : 'down', text: `${delta > 0 ? '+' : ''}${Math.round(delta * 100)}%` }
 }
 
 export function pointsChange(current: number, previous: number): { direction: 'up' | 'down' | 'flat'; text: string } {

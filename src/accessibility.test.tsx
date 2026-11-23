@@ -16,14 +16,14 @@ describe('accessibility smoke checks', () => {
     render(<App />)
     await checkAccessibility()
   })
-  it('keeps the insights page accessible', async () => {
+  it('keeps the monthly review accessible', async () => {
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Monthly review/ }))
     await checkAccessibility()
   })
   it('keeps the referral tracker and its add dialog accessible', async () => {
     render(<App />)
-    fireEvent.click(screen.getByRole('button', { name: /Referrals/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Referrers/ }))
     await checkAccessibility()
     fireEvent.click(screen.getByRole('button', { name: 'ADD REFERRAL' }))
     fireEvent.click(screen.getByRole('button', { name: 'CLEAR SAMPLE & CONTINUE' }))

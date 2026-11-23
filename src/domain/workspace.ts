@@ -7,7 +7,7 @@ export function createEmptyWorkspace(now = new Date()): Workspace {
   return {
     version: 2, isDemo: false, createdAt: now.toISOString(), deviceSeed: makeId(),
     leads: [], profiles: {}, callbacks: [], sales: [], referrers: [], referrals: [], activity: [], packages: [],
-    settings: { autoCopy: true },
+    settings: { autoCopy: true, monthlyTarget: null },
   }
 }
 

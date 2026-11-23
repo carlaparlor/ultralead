@@ -1,116 +1,188 @@
 import { describe, expect, it } from 'vitest'
-import { analyse, change, pointsChange, rangeStart } from './analytics'
+import { change, pointsChange, recentMonths, reviewMonth } from './analytics'
+import { monthWindow, shiftMonth, startOfMonth } from './month'
+import { addReferrer, markReferralPaid, saveReferral } from './referrals'
 import { makeLead, NOW, workspaceWith } from './testFixtures'
-import { emptyProfile, type Workspace } from './types'
+import { emptyProfile, type Sale, type Workspace } from './types'
+import { recordSale, updateSaleStage } from './workspace'
 
-/** Builds a workspace with attempts and sales at explicit times, relative to NOW. */
+/** NOW is 28 October 2026, 10:00 local, so "this month" is a partial 28-day-old October. */
+const OCTOBER = startOfMonth(NOW)
+const dayIn = (month: Date, day: number, hour = 10) => new Date(month.getFullYear(), month.getMonth(), day, hour)
+const lastMonth = shiftMonth(OCTOBER, -1)
+
+/** TIMESTAMP because testFixtures pins NOW to an explicit instant. */
+function saleOf(id: string, lead = makeLead('5-1'), stage: Sale['stage'] = 'activated', createdAt = dayIn(OCTOBER, 5), activatedAt: string | null = dayIn(OCTOBER, 8).toISOString(), type: Sale['activationType'] = 'ATT', packageName = 'Everyday 20GB', packagePriceCents: number | null = 19_900): Sale {
+  return {
+    id, lead, packageName, packagePriceCents, activationType: type, stage,
+    createdAt: createdAt.toISOString(), updatedAt: activatedAt ? new Date(activatedAt).toISOString() : createdAt.toISOString(), activatedAt,
+  }
+}
+
+/** A month with calls, an activation, a decline, an open sale and referral money. */
 function scenario(): Workspace {
-  const a = makeLead('5-1', { name: 'Alpha' }), b = makeLead('5-2', { name: 'Beta' }), c = makeLead('5-3', { name: 'Gamma' })
-  const daysAgo = (days: number, hour = 10) => new Date(NOW.getFullYear(), NOW.getMonth(), NOW.getDate() - days, hour).toISOString()
-  const base = workspaceWith(a, b, c)
-  const sale = (id: string, lead = a, stage: 'credit_vetting' | 'pending_confirmation' | 'activated' | 'declined', createdAt: string, activatedAt: string | null, type: 'ATT' | 'Non-ATT' | null, packageName = 'Everyday 20GB') => ({
-    id, lead, packageName, packagePriceCents: null, activationType: type, stage, createdAt, updatedAt: activatedAt ?? createdAt, activatedAt,
-  })
+  const a = makeLead('5-1', { name: 'Alpha' }), b = makeLead('5-2', { name: 'Beta' }), c = makeLead('5-3', { name: 'Gamma' }), d = makeLead('5-4', { name: 'Delta' })
+  const base = workspaceWith(a, b, c, d)
+  const at = (month: Date, day: number, hour: number) => dayIn(month, day, hour).toISOString()
   return {
     ...base,
     profiles: {
-      // Alpha: no answer, then a callback, then a sale (3 attempts today)
+      // Alpha: two calls this month, one conversation
       '5-1': { ...emptyProfile(), attempts: [
-        { id: 't1', at: daysAgo(0, 9), outcome: 'no_answer' },
-        { id: 't2', at: daysAgo(0, 9), outcome: 'callback' },
-        { id: 't3', at: daysAgo(0, 9), outcome: 'sale' },
-        // An older conversation outside a 7-day window
-        { id: 't4', at: daysAgo(20), outcome: 'not_interested' },
+        { id: 't1', at: at(OCTOBER, 2, 9), outcome: 'no_answer' },
+        { id: 't2', at: at(OCTOBER, 2, 11), outcome: 'callback' },
       ] },
-      // Beta: one no answer today, two more last week
-      '5-2': { ...emptyProfile(), attempts: [
-        { id: 't5', at: daysAgo(0, 8), outcome: 'no_answer' },
-        { id: 't6', at: daysAgo(10), outcome: 'no_answer' },
-      ] },
-      // Gamma: silent, no attempts
-      '5-3': emptyProfile(),
+      // Beta: a sale conversation on a second day
+      '5-2': { ...emptyProfile(), attempts: [{ id: 't3', at: at(OCTOBER, 9, 9), outcome: 'sale' }] },
+      // Gamma: last month only
+      '5-3': { ...emptyProfile(), attempts: [{ id: 't4', at: at(lastMonth, 20, 9), outcome: 'not_interested' }] },
+      '5-4': emptyProfile(),
     },
     sales: [
-      sale('s1', a, 'activated', daysAgo(3), daysAgo(1), 'ATT'),
-      sale('s2', b, 'declined', daysAgo(5), null, null, 'Home Connect'),
-      sale('s3', c, 'pending_confirmation', daysAgo(2), null, null, 'Everyday 20GB'),
-      sale('s4', a, 'activated', daysAgo(40), daysAgo(38), 'Non-ATT', 'Solo 20GB'),
+      // Activation and its sale both in this month
+      saleOf('s1', a, 'activated', dayIn(OCTOBER, 3), at(OCTOBER, 6, 12), 'ATT', 'Everyday 20GB', 19_900),
+      // Sale this month, declined
+      saleOf('s2', b, 'declined', dayIn(OCTOBER, 10), null, null, 'Home Connect', 29_900),
+      // Sale this month still awaiting confirmation
+      saleOf('s3', c, 'pending_confirmation', dayIn(OCTOBER, 12), null, null, 'Unlimited Connect', 24_900),
+      // Sale made last month, activated this month: the activation belongs to October
+      saleOf('s4', d, 'activated', dayIn(lastMonth, 26), at(OCTOBER, 4, 15), 'Non-ATT', 'Solo 20GB', 14_900),
+      // Last month entirely
+      saleOf('s5', a, 'activated', dayIn(lastMonth, 3), at(lastMonth, 9, 10), 'ATT', 'Everyday 20GB', 19_900),
     ],
   }
 }
 
-describe('insights analysis', () => {
-  it('counts only the attempts inside the chosen window', () => {
-    const ws = scenario()
-    expect(analyse(ws, 'today', NOW).calls.attempts).toBe(4)
-    expect(analyse(ws, 'week', NOW).calls.attempts).toBe(4)
-    expect(analyse(ws, 'all', NOW).calls.attempts).toBe(6)
-    expect(analyse(ws, 'all', NOW).calls).toMatchObject({ noAnswer: 3, notInterested: 1, callback: 1, sale: 1, customers: 2 })
+describe('calendar month windows', () => {
+  it('runs from local midnight on the 1st to now, and compares with the same stretch last month', () => {
+    const window = monthWindow(OCTOBER, NOW)
+    expect(window.key).toBe('2026-10')
+    expect(window.label).toBe('October 2026')
+    expect(window.start).toEqual(new Date(2026, 9, 1, 0, 0, 0, 0))
+    expect(window.end).toEqual(NOW)
+    expect(window.isCurrent).toBe(true)
+    expect(window.days).toBe(31)
+    expect(window.daysElapsed).toBe(28)
+    // 1–28 September at the same time of day, not the whole of September.
+    expect(window.compareStart).toEqual(new Date(2026, 8, 1))
+    expect(window.compareEnd).toEqual(new Date(2026, 8, 28, 10, 0, 0, 0))
   })
 
-  it('derives contact and conversion rates from outcomes', () => {
-    const today = analyse(scenario(), 'today', NOW)
-    // 4 attempts, 2 reached a person (callback + sale)
-    expect(today.contactRate).toBeCloseTo(0.5)
-    expect(today.conversionRate).toBeCloseTo(0.5)
-    expect(today.calls.customers).toBe(2)
+  it('measures a past month in full against the whole month before it', () => {
+    const past = monthWindow(shiftMonth(OCTOBER, -1), NOW)
+    expect(past.isCurrent).toBe(false)
+    expect(past.start).toEqual(new Date(2026, 8, 1))
+    expect(past.end).toEqual(new Date(2026, 9, 1))
+    expect(past.daysElapsed).toBe(30)
+    expect(past.compareStart).toEqual(new Date(2026, 7, 1))
+    expect(past.compareEnd).toEqual(new Date(2026, 8, 1))
+    // A past month is compared with the whole month before it, even when that month is shorter.
+    expect(monthWindow(new Date(2026, 2, 1), NOW).compareEnd).toEqual(new Date(2026, 2, 1))
+  })
+})
+
+describe('monthly review', () => {
+  it('counts only this calendar month, including activations of older sales', () => {
+    const review = reviewMonth(scenario(), OCTOBER, NOW)
+    expect(review.totals.calls).toBe(3)
+    expect(review.totals.reached).toBe(2)
+    expect(review.totals.customers).toBe(2)
+    expect(review.totals.contactRate).toBeCloseTo(2 / 3)
+    expect(review.totals.sales).toBe(3) // s1, s2, s3 were recorded this month
+    expect(review.totals.activations).toBe(2) // s1 and s4 activated this month
+    expect(review.totals.att).toBe(1)
+    expect(review.totals.nonAtt).toBe(1)
+    // s4 was sold last month, so its value counts toward this month's activated business, not its sales.
+    expect(review.totals.activationValueCents).toBe(19_900 + 14_900)
+    expect(review.totals.salesValueCents).toBe(19_900 + 29_900 + 24_900)
   })
 
-  it('builds one bucket per period and stacks outcomes into them', () => {
-    const ws = scenario()
-    const today = analyse(ws, 'today', NOW)
-    expect(today.series).toHaveLength(8)
-    expect(today.series.reduce((total, point) => total + point.attempts, 0)).toBe(4)
-    const week = analyse(ws, 'week', NOW)
-    expect(week.series).toHaveLength(7)
-    expect(week.series.reduce((total, point) => total + point.attempts, 0)).toBe(4)
-    // Activations are counted in the bucket they happened in
-    expect(week.series.reduce((total, point) => total + point.activations, 0)).toBe(1)
-    const all = analyse(ws, 'all', NOW)
-    expect(all.series.length).toBeGreaterThan(0)
-    expect(all.series.length).toBeLessThanOrEqual(12)
-    expect(all.series.reduce((total, point) => total + point.attempts, 0)).toBe(6)
+  it('separates open, declined and unpriced work instead of blending it', () => {
+    const workspace = scenario()
+    let review = reviewMonth(workspace, OCTOBER, NOW)
+    expect(review.totals.openSales).toBe(1)
+    expect(review.totals.openValueCents).toBe(24_900)
+    expect(review.totals.declined).toBe(1)
+    expect(review.totals.declinedValueCents).toBe(29_900)
+    expect(review.totals.unpricedSales).toBe(0)
+    expect(review.totals.unpricedActivations).toBe(0)
+    // An activation without a price is still an activation, but adds nothing to the value.
+    const lead = makeLead('5-9', { name: 'Unpriced' })
+    const unpriced = { ...workspace, leads: [...workspace.leads, lead], sales: [...workspace.sales, saleOf('s9', lead, 'activated', dayIn(OCTOBER, 7), dayIn(OCTOBER, 9).toISOString(), 'ATT', 'Mystery', null)] }
+    review = reviewMonth(unpriced, OCTOBER, NOW)
+    expect(review.totals.activations).toBe(3)
+    expect(review.totals.activationValueCents).toBe(19_900 + 14_900)
+    expect(review.totals.unpricedActivations).toBe(1)
   })
 
-  it('reports the funnel, activation rate and days to activate', () => {
-    const funnel = analyse(scenario(), 'week', NOW).funnel
-    expect(funnel.recorded).toBe(3)
-    expect(funnel.activated).toBe(1)
-    expect(funnel.declined).toBe(1)
-    expect(funnel.awaitingConfirmation).toBe(1)
-    // Decided sales only: one activated, one declined
-    expect(funnel.activationRate).toBeCloseTo(0.5)
-    expect(funnel.steps.map(step => step.value)).toEqual([3, 2, 1])
-    // 3 days from sale to activation
-    expect(analyse(scenario(), 'week', NOW).daysToActivate).toBeCloseTo(2, 1)
+  it('builds one point per elapsed day and never counts future days', () => {
+    const review = reviewMonth(scenario(), OCTOBER, NOW)
+    expect(review.daily).toHaveLength(28)
+    expect(review.daily[0].day).toBe(1)
+    expect(review.daily.at(-1)!.day).toBe(28)
+    expect(review.daily.reduce((total, point) => total + point.calls, 0)).toBe(3)
+    expect(review.daily.reduce((total, point) => total + point.activations, 0)).toBe(2)
+    expect(review.activeDays).toBe(2)
+    expect(review.callsPerActiveDay).toBeCloseTo(1.5)
+    // 2 October had two calls, so it is the busiest day; the label is a real date in the month.
+    expect(review.bestDay).toMatchObject({ day: 2, calls: 2 })
+    expect(review.bestDay!.label).toMatch(/2 Oct/)
   })
 
-  it('splits activations by type and ranks packages', () => {
-    const week = analyse(scenario(), 'week', NOW)
-    expect(week.att).toEqual({ att: 1, nonAtt: 0 })
-    // All time also picks up the 38-day-old non-ATT activation.
-    const all = analyse(scenario(), 'all', NOW)
-    expect(all.att).toEqual({ att: 1, nonAtt: 1 })
-    expect(all.packages[0]).toMatchObject({ name: 'Everyday 20GB', sales: 2, activated: 1 })
-    expect(all.packages.map(item => item.name)).toEqual(['Everyday 20GB', 'Home Connect', 'Solo 20GB'])
+  it('derives conversion, activation rate and days to activate', () => {
+    const review = reviewMonth(scenario(), OCTOBER, NOW)
+    // 3 sales from 2 conversations is deliberately not capped: every sale is counted.
+    expect(review.conversionRate).toBeCloseTo(1.5)
+    // One activated, one declined this month; the older sale that activated does not double count.
+    expect(review.activationRate).toBeCloseTo(2 / 3)
+    // Measured in exact hours, including the sale's own time of day.
+    const hours = (from: Date, to: Date) => (to.getTime() - from.getTime()) / 86_400_000
+    expect(review.totals.daysToActivate).toBeCloseTo((hours(dayIn(OCTOBER, 3), dayIn(OCTOBER, 6, 12)) + hours(dayIn(lastMonth, 26), dayIn(OCTOBER, 4, 15))) / 2, 2)
   })
 
-  it('compares with the previous window of the same length', () => {
-    const week = analyse(scenario(), 'week', NOW)
-    expect(week.previous).not.toBeNull()
-    // Only the 10-day-old attempt falls in the previous seven days.
-    expect(week.previous!.calls).toBe(1)
-    expect(analyse(scenario(), 'all', NOW).previous).toBeNull()
+  it('compares with the same stretch of the previous month, never with a full one', () => {
+    const review = reviewMonth(scenario(), OCTOBER, NOW)
+    // 20 September has one attempt; the rest of September's work is outside that stretch.
+    expect(review.previous.calls).toBe(1)
+    // s4 (26 September) and s5 (3 September) were both recorded inside 1–28 September,
+    // and s5 activated on 9 September, also inside the comparable stretch.
+    expect(review.previous.sales).toBe(2)
+    expect(review.previous.activations).toBe(1)
+    expect(review.previous.contactRate).toBe(1) // the one September call was a conversation
   })
 
-  it('starts windows on local midnight and reports no activity for an empty workspace', () => {
-    const start = rangeStart('week', NOW)!
-    expect(start.getHours()).toBe(0)
-    expect(rangeStart('all', NOW)).toBeNull()
-    const empty = analyse(workspaceWith(), 'week', NOW)
+  it('computes an optional target and hides the reward money that is not due', () => {
+    const withTarget = { ...scenario(), settings: { autoCopy: true, monthlyTarget: 5 } }
+    expect(reviewMonth(withTarget, OCTOBER, NOW).target).toEqual({ value: 5, remaining: 3, share: 2 / 5 })
+    const wild = { ...withTarget, settings: { autoCopy: true, monthlyTarget: 1 } }
+    expect(reviewMonth(wild, OCTOBER, NOW).target).toMatchObject({ remaining: 0, share: 1 })
+    expect(reviewMonth(scenario(), OCTOBER, NOW).target).toBeNull()
+  })
+
+  it('reports the same reward money the referrer ledger does', () => {
+    const lead = makeLead('5-1', { name: 'Alpha' })
+    let workspace: Workspace = { ...scenario(), leads: [lead] }
+    workspace = addReferrer(workspace, { name: 'Nandi', contact: '', note: '' }, NOW)
+    workspace = saveReferral(workspace, { referrerId: workspace.referrers[0].id, customerName: 'Alpha', customerContact: '', accountNumber: '5-1' }, NOW)
+    const review = reviewMonth(workspace, OCTOBER, NOW)
+    // Alpha's 19,900 package earns R20 and is due until it is paid.
+    expect(review.rewards).toMatchObject({ earnedCents: 2_000, dueCents: 2_000, dueCount: 1, paidCents: 0 })
+    const paid = markReferralPaid(workspace, workspace.referrals[0].id, NOW)
+    expect(reviewMonth(paid, OCTOBER, NOW).rewards).toMatchObject({ dueCents: 0, paidCents: 2_000, paidCount: 1 })
+  })
+
+  it('reports no activity for an empty month and offers only months that hold work', () => {
+    const empty = reviewMonth(workspaceWith(), OCTOBER, NOW)
     expect(empty.hasActivity).toBe(false)
-    expect(empty.contactRate).toBe(0)
-    expect(empty.daysToActivate).toBeNull()
+    expect(empty.totals.calls).toBe(0)
+    expect(empty.bestDay).toBeNull()
+    expect(empty.daily.every(point => point.calls === 0)).toBe(true)
+
+    const months = recentMonths(scenario(), NOW)
+    expect(months[0].key).toBe('2026-10')
+    expect(months.map(item => item.key)).toEqual(['2026-10', '2026-09'])
+    // An empty workspace still offers this month.
+    expect(recentMonths(workspaceWith(), NOW).map(item => item.key)).toEqual(['2026-10'])
   })
 
   it('formats relative change without dividing by zero', () => {
@@ -120,5 +192,28 @@ describe('insights analysis', () => {
     expect(change(4, 5).direction).toBe('down')
     expect(pointsChange(0.5, 0.4)).toEqual({ direction: 'up', text: '+10 pts' })
     expect(pointsChange(0.5, 0.5).direction).toBe('flat')
+  })
+
+  it('keeps the review honest about a sale recorded and activated in different months', () => {
+    // A sale recorded last month and activated this month must not appear twice.
+    const review = reviewMonth(scenario(), OCTOBER, NOW)
+    const totals = review.totals
+    expect(totals.sales + review.previous.activations).toBeGreaterThan(0)
+    const recount = reviewMonth({ ...scenario(), sales: scenario().sales.filter(sale => sale.id !== 's4') }, OCTOBER, NOW)
+    expect(recount.totals.activations).toBe(totals.activations - 1)
+    // ...and the money follows the activation, not the sale date.
+    expect(recount.totals.activationValueCents).toBe(totals.activationValueCents - 14_900)
+    expect(recount.totals.sales).toBe(totals.sales)
+  })
+})
+
+describe('monthly review with an unsold month', () => {
+  it('still shows a month that only has referral payments', () => {
+    let workspace: Workspace = { ...workspaceWith(), referrals: [], referrers: [] }
+    workspace = addReferrer(workspace, { name: 'Simon', contact: '', note: '' }, NOW)
+    workspace = saveReferral(workspace, { referrerId: workspace.referrers[0].id, customerName: 'Paid Person', customerContact: '', accountNumber: null }, NOW)
+    expect(reviewMonth(workspace, OCTOBER, NOW).hasActivity).toBe(false)
+    expect(recordSale(workspace, makeLead('5-5'), 'Any', NOW)).not.toBe(workspace)
+    expect(updateSaleStage).toBeTypeOf('function')
   })
 })

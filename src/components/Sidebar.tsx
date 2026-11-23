@@ -7,8 +7,8 @@ const mainItems: { id: View; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'callbacks', label: 'Callbacks', icon: CalendarClock },
   { id: 'pipeline', label: 'Sales pipeline', icon: ChartNoAxesCombined },
   { id: 'activations', label: 'Activations', icon: CheckCheck },
-  { id: 'referrals', label: 'Referrals', icon: Handshake },
-  { id: 'insights', label: 'Insights', icon: TrendingUp },
+  { id: 'referrals', label: 'Referrers', icon: Handshake },
+  { id: 'insights', label: 'Monthly review', icon: TrendingUp },
 ]
 
 export function Sidebar({ view, onNavigate, workspace, mobileOpen, onClose }: { view: View; onNavigate: (view: View) => void; workspace: Workspace; mobileOpen: boolean; onClose: () => void }) {

@@ -1,12 +1,23 @@
 import { localDayKey } from './dates'
-import { emptyProfile, type Activity, type Callback, type Lead, type Referral, type Referrer, type Sale, type Workspace } from './types'
+import { emptyProfile, type Activity, type Callback, type CustomerProfile, type Lead, type Referral, type Referrer, type Sale, type Workspace } from './types'
 import { createEmptyWorkspace } from './workspace'
 
-/** All examples are invented. IDs have deliberately non-real trailing digits. */
+/**
+ * All examples are invented. IDs have deliberately non-real trailing digits.
+ *
+ * The sample spreads work over the last few weeks so the monthly review and the
+ * referrer ledger have something honest to show: days with calls, days without,
+ * a sale still in vetting, an activation awaiting a price and a payment already made.
+ */
 export function createDemoWorkspace(now = new Date()): Workspace {
   const base = createEmptyWorkspace(now)
   const minutesAgo = (minutes: number) => new Date(now.getTime() - minutes * 60000).toISOString()
   const minutesFromNow = (minutes: number) => new Date(now.getTime() + minutes * 60000).toISOString()
+  /** Local day at a wall-clock hour, kept inside the current month for the sample. */
+  const daysAgoAt = (days: number, hour: number) => {
+    const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - days, hour, 15, 0)
+    return date.getTime() > now.getTime() ? now : date
+  }
   const lead = (name: string, account: string, id: string): Lead => ({
     name, accountNumber: account, customerId: id, sourceStatus: 'Prospect',
     listDate: localDayKey(now), importedAt: minutesAgo(180), ageVerified: false,
@@ -29,6 +40,8 @@ export function createDemoWorkspace(now = new Date()): Workspace {
     lead('Lerato Mthembu', '5-84729361000116', '9101120000000'),
     lead('Sam Williams', '5-84729361000117', '9206220000000'),
     lead('Mia Petersen', '5-84729361000118', '9604270000000'),
+    lead('Buhle Ngcobo', '5-84729361000119', '9503080000000'),
+    lead('Tebogo Radebe', '5-84729361000120', '9109260000000'),
   ]
   const callbacks: Callback[] = [
     { id: 'demo-callback-1', lead: leads[0], dueAt: minutesAgo(23), note: 'Asked for a call back to discuss the data options.', createdAt: minutesAgo(1440) },
@@ -41,14 +54,20 @@ export function createDemoWorkspace(now = new Date()): Workspace {
   const sales: Sale[] = [
     sale('demo-sale-1', leads[2], 'Everyday 20GB', 19900, null, 'credit_vetting', 34),
     sale('demo-sale-2', leads[3], 'Unlimited Connect', 24900, null, 'pending_confirmation', 72),
+    // The two reference examples for "already activated today".
     sale('demo-sale-3', historical[0], 'Everyday 20GB', 19900, 'ATT', 'activated', 95),
     sale('demo-sale-4', historical[1], 'Home Connect', 29900, 'Non-ATT', 'activated', 150),
-    sale('demo-sale-5', historical[2], 'Everyday 20GB', null, 'ATT', 'activated', 1740),
+    // Activated earlier this month: one priced, one still missing its price.
+    sale('demo-sale-5', historical[2], 'Everyday 20GB', null, 'ATT', 'activated', 2880),
+    sale('demo-sale-6', historical[3], 'Solo 20GB', 14900, 'Non-ATT', 'activated', 4320),
+    // A decline and an activation from last month, so the monthly comparison has a real month behind it.
+    sale('demo-sale-7', historical[4], 'Home Connect', 29900, null, 'declined', 33 * 1440),
+    sale('demo-sale-8', historical[4], 'Everyday 20GB', 19900, 'ATT', 'activated', 35 * 1440),
   ]
   const referrers: Referrer[] = [
-    { id: 'demo-referrer-1', name: 'Nandi Molefe', contact: '082 000 0101', createdAt: minutesAgo(4000) },
-    { id: 'demo-referrer-2', name: 'Simon Jacobs', contact: '083 000 0102', createdAt: minutesAgo(4000) },
-    { id: 'demo-referrer-3', name: 'Anele Mokoena', contact: '084 000 0103', createdAt: minutesAgo(4000) },
+    { id: 'demo-referrer-1', name: 'Nandi Molefe', contact: '082 000 0101', note: 'Works with Thandi. Prefers a WhatsApp on the 25th.', createdAt: minutesAgo(40 * 1440), archivedAt: null },
+    { id: 'demo-referrer-2', name: 'Simon Jacobs', contact: '083 000 0102', note: 'Met at the Randburg bus rank.', createdAt: minutesAgo(40 * 1440), archivedAt: null },
+    { id: 'demo-referrer-3', name: 'Anele Mokoena', contact: '084 000 0103', note: '', createdAt: minutesAgo(40 * 1440), archivedAt: null },
   ]
   const referral = (id: string, customer: Lead, referrerId: string, minutes: number): Referral => ({
     id, referrerId, customerName: customer.name, customerContact: '', accountNumber: customer.accountNumber,
@@ -57,13 +76,16 @@ export function createDemoWorkspace(now = new Date()): Workspace {
   const referrals: Referral[] = [
     referral('demo-referral-1', historical[0], referrers[0].id, 1800),
     referral('demo-referral-2', leads[3], referrers[0].id, 1700),
+    // Simon has already been paid for Sam; the record is repointed at the paid activation below.
     { ...referral('demo-referral-3', historical[1], referrers[1].id, 1900), payments: [{
       id: 'demo-payment-1', paidAt: minutesAgo(90), voidedAt: null, saleId: sales[3].id,
       accountNumber: historical[1].accountNumber, customerName: historical[1].name, referrerName: referrers[1].name,
       packageName: sales[3].packageName, packagePriceCents: 29900, activatedAt: sales[3].activatedAt!, amountCents: 3000,
     }] },
+    // Anele: one activation ready to pay and one that still needs a price.
     referral('demo-referral-4', historical[2], referrers[2].id, 2400),
-    { id: 'demo-referral-5', referrerId: referrers[1].id, customerName: 'Mpho Naidoo', customerContact: '082 000 0104', accountNumber: null, createdAt: minutesAgo(120), updatedAt: minutesAgo(120), payments: [] },
+    referral('demo-referral-5', historical[3], referrers[2].id, 2600),
+    { id: 'demo-referral-6', referrerId: referrers[1].id, customerName: 'Mpho Naidoo', customerContact: '082 000 0104', accountNumber: null, createdAt: minutesAgo(120), updatedAt: minutesAgo(120), payments: [] },
   ]
   const activity: Activity[] = [
     { id: 'demo-activity-1', at: minutesAgo(18), accountNumber: leads[4].accountNumber, name: leads[4].name, description: 'No answer · retry spaced out' },
@@ -71,6 +93,28 @@ export function createDemoWorkspace(now = new Date()): Workspace {
     { id: 'demo-activity-3', at: minutesAgo(65), accountNumber: leads[1].accountNumber, name: leads[1].name, description: 'Callback scheduled' },
     { id: 'demo-activity-4', at: minutesAgo(95), accountNumber: historical[0].accountNumber, name: historical[0].name, description: 'Activation completed' },
   ]
+  // A believable spread of calls over the last few weeks, with quiet days between them.
+  const callDays = [0, 0, 0, 1, 1, 2, 4, 5, 7, 8, 11, 12, 14, 19]
+  const outcomes = ['no_answer', 'not_interested', 'callback', 'no_answer'] as const
+  const profile = (): CustomerProfile => ({ ...emptyProfile(), attempts: [] })
+  const profiles: Record<string, CustomerProfile> = {
+    [leads[0].accountNumber]: { ...profile(), notes: 'Interested in a smaller data package. Wants to compare options before deciding.', attempts: [{ id: 'demo-attempt-1', at: minutesAgo(1440), outcome: 'callback' }] },
+    [leads[1].accountNumber]: { ...profile(), attempts: [{ id: 'demo-attempt-2', at: minutesAgo(65), outcome: 'callback' }] },
+    [leads[2].accountNumber]: { ...profile(), attempts: [{ id: 'demo-attempt-3', at: minutesAgo(34), outcome: 'sale' }] },
+    [leads[3].accountNumber]: { ...profile(), attempts: [{ id: 'demo-attempt-4', at: minutesAgo(100), outcome: 'sale' }] },
+    [leads[4].accountNumber]: { ...profile(), attempts: [{ id: 'demo-attempt-5', at: minutesAgo(18), outcome: 'no_answer' }] },
+    [leads[11].accountNumber]: { ...profile(), doNotCall: true, attempts: [{ id: 'demo-attempt-6', at: minutesAgo(120), outcome: 'not_interested' }] },
+  }
+  let attempt = 7
+  callDays.forEach((days, index) => {
+    const target = index < 5 ? leads[4 + index] : leads[(index * 3) % leads.length]
+    const at = daysAgoAt(days, 9 + (index % 7)).toISOString()
+    const existing = profiles[target.accountNumber] ?? profile()
+    profiles[target.accountNumber] = {
+      ...existing,
+      attempts: [...existing.attempts, { id: `demo-attempt-${attempt++}`, at, outcome: outcomes[index % outcomes.length] }],
+    }
+  })
   return {
     ...base,
     isDemo: true,
@@ -80,14 +124,8 @@ export function createDemoWorkspace(now = new Date()): Workspace {
     referrers,
     referrals,
     activity,
-    packages: ['Everyday 20GB', 'Unlimited Connect', 'Home Connect'],
-    profiles: {
-      [leads[0].accountNumber]: { ...emptyProfile(), notes: 'Interested in a smaller data package. Wants to compare options before deciding.', attempts: [{ id: 'demo-attempt-1', at: minutesAgo(1440), outcome: 'callback' }] },
-      [leads[1].accountNumber]: { ...emptyProfile(), attempts: [{ id: 'demo-attempt-2', at: minutesAgo(65), outcome: 'callback' }] },
-      [leads[2].accountNumber]: { ...emptyProfile(), attempts: [{ id: 'demo-attempt-3', at: minutesAgo(34), outcome: 'sale' }] },
-      [leads[3].accountNumber]: { ...emptyProfile(), attempts: [{ id: 'demo-attempt-4', at: minutesAgo(100), outcome: 'sale' }] },
-      [leads[4].accountNumber]: { ...emptyProfile(), attempts: [{ id: 'demo-attempt-5', at: minutesAgo(18), outcome: 'no_answer' }] },
-      [leads[11].accountNumber]: { ...emptyProfile(), doNotCall: true, attempts: [{ id: 'demo-attempt-6', at: minutesAgo(120), outcome: 'not_interested' }] },
-    },
+    packages: ['Everyday 20GB', 'Unlimited Connect', 'Home Connect', 'Solo 20GB'],
+    settings: { ...base.settings, monthlyTarget: 6 },
+    profiles,
   }
 }

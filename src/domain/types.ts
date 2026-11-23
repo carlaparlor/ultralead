@@ -62,6 +62,10 @@ export interface Referrer {
   name: string
   contact: string
   createdAt: string
+  /** Free-text note for the how you know them / when to thank them context. Never banking details. */
+  note: string
+  /** Kept so a referrer can be hidden from the active list without losing their money history. */
+  archivedAt: string | null
 }
 
 /** Snapshot of a payment recorded manually, including the facts used to calculate it. */
@@ -115,6 +119,8 @@ export interface Workspace {
   packages: string[]
   settings: {
     autoCopy: boolean
+    /** Optional monthly activation target; null means no target is shown. */
+    monthlyTarget: number | null
   }
 }
 

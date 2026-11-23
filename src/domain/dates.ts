@@ -14,6 +14,18 @@ export function ageFromCustomerId(id: string, now: Date): number | null {
   return age >= 0 ? age : null
 }
 
+const dayLabelCache = new Map<number, string>()
+
+/** "1 Nov" for a day number 1–31 of the month containing `now`; cached because charts repeat it often. */
+export function dayOfMonthLabel(day: number, now: Date): string {
+  const key = now.getFullYear() * 10000 + (now.getMonth() + 1) * 100 + day
+  const cached = dayLabelCache.get(key)
+  if (cached) return cached
+  const label = new Intl.DateTimeFormat('en-ZA', { day: 'numeric', month: 'short' }).format(new Date(now.getFullYear(), now.getMonth(), day))
+  dayLabelCache.set(key, label)
+  return label
+}
+
 export function localDayKey(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }

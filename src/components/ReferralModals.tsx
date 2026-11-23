@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { ArrowRight, Info } from 'lucide-react'
 import { formatDate } from '../domain/dates'
 import { formatRand } from '../domain/money'
-import { activePayment } from '../domain/referrals'
+import { activePayment, MAX_REFERRER_NOTE, type ReferrerDetails } from '../domain/referrals'
 import type { Referral, ReferralPayment, Referrer, Workspace } from '../domain/types'
 import { Modal } from './ui'
 
@@ -57,10 +57,38 @@ export function ReferralModal({ workspace, referral, onClose, onSave }: {
   </Modal>
 }
 
-export function ReferrerModal({ referrer, onClose, onSave }: { referrer: Referrer; onClose: () => void; onSave: (name: string, contact: string) => void }) {
+function ReferrerFields({ name, contact, note, onName, onContact, onNote, nameId, contactId, noteId }: {
+  name: string; contact: string; note: string;
+  onName: (value: string) => void; onContact: (value: string) => void; onNote: (value: string) => void;
+  nameId: string; contactId: string; noteId: string;
+}) {
+  return <>
+    <label className="form-label" htmlFor={nameId}>NAME <span>REQUIRED</span></label>
+    <input className="form-input" id={nameId} data-autofocus required maxLength={120} value={name} onChange={event => onName(event.target.value)} placeholder="e.g. Nandi Molefe" />
+    <label className="form-label form-spaced" htmlFor={contactId}>CONTACT <span>OPTIONAL</span></label>
+    <input className="form-input" id={contactId} maxLength={160} value={contact} onChange={event => onContact(event.target.value)} placeholder="Phone, email or how to reach them" />
+    <label className="form-label form-spaced" htmlFor={noteId}>NOTE <span>OPTIONAL</span></label>
+    <textarea className="form-textarea" id={noteId} rows={3} maxLength={MAX_REFERRER_NOTE} value={note} onChange={event => onNote(event.target.value)} placeholder="How you know them, or when and how to thank them" />
+    <div className="input-help">For remembering and thanking them. Do not enter banking details; payments happen outside the app.</div>
+  </>
+}
+
+export function ReferrerModal({ referrer, onClose, onSave }: { referrer: Referrer; onClose: () => void; onSave: (details: ReferrerDetails) => void }) {
   const [name, setName] = useState(referrer.name)
   const [contact, setContact] = useState(referrer.contact)
-  return <Modal title="Edit referrer." eyebrow="REFERRALS" onClose={onClose}><form className="modal-body" onSubmit={event => { event.preventDefault(); if (name.trim()) onSave(name, contact) }}><p className="modal-intro">Update this person's details across their referrals. Previously recorded payments keep their original name.</p><label className="form-label" htmlFor="edit-referrer-name">NAME <span>REQUIRED</span></label><input className="form-input" id="edit-referrer-name" data-autofocus required maxLength={120} value={name} onChange={event => setName(event.target.value)} /><label className="form-label form-spaced" htmlFor="edit-referrer-contact">CONTACT <span>OPTIONAL</span></label><input className="form-input" id="edit-referrer-contact" maxLength={160} value={contact} onChange={event => setContact(event.target.value)} /><div className="input-help">Do not enter banking details.</div><div className="modal-footer"><button type="button" className="button button-outline" onClick={onClose}>CANCEL</button><button type="submit" className="button button-primary" disabled={!name.trim()}>SAVE CHANGES <ArrowRight size={15} /></button></div></form></Modal>
+  const [note, setNote] = useState(referrer.note)
+  return <Modal title="Edit referrer." eyebrow="REFERRERS" onClose={onClose}><form className="modal-body" onSubmit={event => { event.preventDefault(); if (name.trim()) onSave({ name, contact, note }) }}><p className="modal-intro">Update this person's details across their referrals. Previously recorded payments keep their original name.</p>
+    <ReferrerFields name={name} contact={contact} note={note} onName={setName} onContact={setContact} onNote={setNote} nameId="edit-referrer-name" contactId="edit-referrer-contact" noteId="edit-referrer-note" />
+    <div className="modal-footer"><button type="button" className="button button-outline" onClick={onClose}>CANCEL</button><button type="submit" className="button button-primary" disabled={!name.trim()}>SAVE CHANGES <ArrowRight size={15} /></button></div></form></Modal>
+}
+
+export function AddReferrerModal({ onClose, onSave }: { onClose: () => void; onSave: (details: ReferrerDetails) => void }) {
+  const [name, setName] = useState('')
+  const [contact, setContact] = useState('')
+  const [note, setNote] = useState('')
+  return <Modal title="Add a referrer." eyebrow="REFERRERS" onClose={onClose}><form className="modal-body" onSubmit={event => { event.preventDefault(); if (name.trim()) onSave({ name, contact, note }) }}><p className="modal-intro">The person who sends you customers. Add their referrals as they come in; the ledger keeps track of what you owe them.</p>
+    <ReferrerFields name={name} contact={contact} note={note} onName={setName} onContact={setContact} onNote={setNote} nameId="new-referrer-name" contactId="new-referrer-contact" noteId="new-referrer-note" />
+    <div className="modal-footer"><button type="button" className="button button-outline" onClick={onClose}>CANCEL</button><button type="submit" className="button button-primary" disabled={!name.trim()}>ADD REFERRER <ArrowRight size={15} /></button></div></form></Modal>
 }
 
 export function PaymentHistoryModal({ referral, onClose, onCorrect }: { referral: Referral; onClose: () => void; onCorrect: (payment: ReferralPayment) => void }) {
