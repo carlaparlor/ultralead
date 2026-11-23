@@ -22,7 +22,7 @@ npm run dev
 
 Open the local address printed in the terminal (normally `http://localhost:5173`). To run the desktop shell during development, install Rust and the Windows build prerequisites, then use `npm run desktop:dev`. Build an installer with `npm run desktop:build`.
 
-The first visit contains clearly labelled **sample data**, including sample referrals. When you add your first referral from the sample workspace, the app offers to clear the sample and start fresh so your real referral is not lost on a later import. You can also choose **Clear sample data**, or simply import your own leads: the first real import replaces the entire sample workspace, including any changes made to it, even if you select “add to current list”. Your real data is never mixed with the sample records.
+The first visit contains clearly labelled **sample data** — leads across a few call outcomes, sales at every stage, activations spread over the last four months, and sample referrals. Clearing it, or importing your own leads, replaces the whole sample workspace, even if you select “add to current list”, and the sample is never mixed with real records. The sample can be loaded again at any time from **Data & settings → Sample data**; it replaces whatever is currently in the workspace, so export a backup first.
 
 For a production build, run `npm run build`, then `npm run preview` to try it locally. The `dist` folder can also be hosted as a static site at the root of an HTTPS origin; no application server is needed. Use the same address and browser each day so you see the same locally saved workspace.
 

@@ -460,6 +460,23 @@ describe('calling workflow', () => {
     expect(screen.getByText(/nothing was cleared/)).toBeInTheDocument()
   })
 
+  it('loads the sample workspace back after it was cleared', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /CLEAR SAMPLE DATA/ }))
+    fireEvent.click(dialog().getByRole('button', { name: /CLEAR SAMPLE DATA/ }))
+    expect(screen.queryByText(/SAMPLE DATA/)).not.toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).isDemo).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: /Data & settings/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'LOAD SAMPLE DATA' }))
+    expect(dialog().getByText(/is replaced by the sample data/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: 'LOAD SAMPLE DATA' }))
+    // The sample is clearly marked again, and settings the user chose survive.
+    expect(screen.getByText('SAMPLE DATA')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).isDemo).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: /Data & settings/ }))
+    expect(screen.getByRole('button', { name: 'LOADED' })).toBeDisabled()
+  })
+
   it('restores saved work after unmount and remount', () => {
     const { unmount } = render(<App />)
     importRows('Persist Person Prospect Consumer 5-401 9001010000000')
