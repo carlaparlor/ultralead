@@ -106,7 +106,7 @@ export interface Activity {
 }
 
 export interface Workspace {
-  version: 3
+  version: 4
   isDemo: boolean
   createdAt: string
   deviceSeed: string
@@ -120,6 +120,8 @@ export interface Workspace {
   packages: string[]
   settings: {
     autoCopy: boolean
+    /** Activations to aim for this calendar month. `null` means no target is set. */
+    monthlyActivationTarget: number | null
   }
 }
 

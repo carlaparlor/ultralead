@@ -5,11 +5,13 @@ import { createEmptyWorkspace, pruneExcluded } from './workspace'
 import type { Workspace } from './types'
 
 // A separate key per schema version prevents an older running tab from overwriting newer data.
-export const STORAGE_KEY = 'ultralead-plus.workspace.v3'
+export const STORAGE_KEY = 'ultralead-plus.workspace.v4'
+/** Version 3 held referrer notes and archiving, but no monthly activation target. */
+export const V3_STORAGE_KEY = 'ultralead-plus.workspace.v3'
 /** Version 2 held referrals but referrers had no notes or archive state. */
 export const V2_STORAGE_KEY = 'ultralead-plus.workspace.v2'
 export const LEGACY_STORAGE_KEY = 'ultralead-plus.workspace.v1'
-const FALLBACK_KEYS = [V2_STORAGE_KEY, LEGACY_STORAGE_KEY]
+const FALLBACK_KEYS = [V3_STORAGE_KEY, V2_STORAGE_KEY, LEGACY_STORAGE_KEY]
 const RECOVERY_KEY = 'ultralead-plus.unreadable-backup'
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -31,15 +33,20 @@ function isLead(value: unknown): boolean {
     && isDate(value.importedAt) && typeof value.ageVerified === 'boolean'
 }
 
-type SchemaVersion = 1 | 2 | 3
+type SchemaVersion = 1 | 2 | 3 | 4
 
 /** The original validation is also used before migrating an older backup. */
+const isMonthlyTarget = (value: unknown): boolean =>
+  value === null || (typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 10_000)
+
 function hasValidCore(value: unknown, version: SchemaVersion): value is Record<string, unknown> {
   if (!isObject(value) || value.version !== version || typeof value.isDemo !== 'boolean' || !isDate(value.createdAt)
     || !isString(value.deviceSeed) || !value.deviceSeed || !Array.isArray(value.leads)
     || !Array.isArray(value.callbacks) || !Array.isArray(value.sales) || !Array.isArray(value.activity)
     || !Array.isArray(value.packages) || !isObject(value.profiles) || !isObject(value.settings)
     || typeof value.settings.autoCopy !== 'boolean') return false
+  // A monthly target arrived in version 4; older workspaces simply have none.
+  if (version >= 4 && !isMonthlyTarget(value.settings.monthlyActivationTarget)) return false
   if (!value.leads.every(isLead) || !hasUnique(value.leads, lead => lead.accountNumber)) return false
   if (!value.callbacks.every(item => isObject(item) && isString(item.id) && isLead(item.lead) && isDate(item.dueAt) && isDate(item.createdAt) && isString(item.note))
     || !hasUnique(value.callbacks, item => (item.lead as Record<string, unknown>).accountNumber)) return false
@@ -106,19 +113,31 @@ function hasValidReferrals(value: Record<string, unknown>, version: SchemaVersio
 
 /** Reject malformed or foreign files instead of partially overwriting a workspace. */
 export function isWorkspace(value: unknown): value is Workspace {
-  if (!hasValidCore(value, 3)) return false
-  return hasValidReferrals(value, 3)
+  if (!hasValidCore(value, 4)) return false
+  return hasValidReferrals(value, 4)
 }
 
 /**
  * Validate first, then migrate old records rather than guessing. Version 1 never had prices or
  * referrals; version 2 referrers predate notes and archiving, so they start unarchived with none.
  */
+/** Add the settings that arrived after version 3 without inventing a target the operator never set. */
+function withMonthlyTarget(value: Record<string, unknown>, version: 4): Workspace {
+  return {
+    ...(value as unknown as Workspace), version,
+    settings: { ...(value.settings as Workspace['settings']), monthlyActivationTarget: null },
+  }
+}
+
 export function decodeWorkspace(value: unknown): Workspace | null {
   if (isWorkspace(value)) return value
+  if (hasValidCore(value, 3) && hasValidReferrals(value, 3)) {
+    const migrated = withMonthlyTarget(value, 4)
+    return isWorkspace(migrated) ? migrated : null
+  }
   if (hasValidCore(value, 2) && hasValidReferrals(value, 2)) {
     const migrated: Workspace = {
-      ...(value as unknown as Workspace), version: 3,
+      ...withMonthlyTarget(value, 4),
       referrers: (value.referrers as Record<string, unknown>[]).map(referrer => ({
         id: referrer.id as string, name: (referrer.name as string).trim(), contact: referrer.contact as string,
         notes: '', archivedAt: null,
@@ -129,7 +148,7 @@ export function decodeWorkspace(value: unknown): Workspace | null {
   }
   if (!hasValidCore(value, 1)) return null
   const migrated = {
-    ...value, version: 3,
+    ...withMonthlyTarget(value, 4),
     sales: (value.sales as Record<string, unknown>[]).map(sale => ({ ...sale, packagePriceCents: null })),
     referrers: [], referrals: [],
   }

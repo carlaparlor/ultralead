@@ -5,9 +5,9 @@ import { emptyProfile, makeId, type ActivationType, type Activity, type CallOutc
 
 export function createEmptyWorkspace(now = new Date()): Workspace {
   return {
-    version: 3, isDemo: false, createdAt: now.toISOString(), deviceSeed: makeId(),
+    version: 4, isDemo: false, createdAt: now.toISOString(), deviceSeed: makeId(),
     leads: [], profiles: {}, callbacks: [], sales: [], referrers: [], referrals: [], activity: [], packages: [],
-    settings: { autoCopy: true },
+    settings: { autoCopy: true, monthlyActivationTarget: null },
   }
 }
 
