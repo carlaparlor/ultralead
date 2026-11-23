@@ -69,21 +69,19 @@ Referrals, contacts and payment history are stored in the same private browser w
 
 ### Monthly performance
 
-The **Insights · monthly** page is built around calendar months, because that is what a target and a month-end review are actually about. Every activation is counted in the month it **activated** in, not the month the sale was recorded, so a deal that sat in vetting across a month boundary lands where the money landed.
+One page, five numbers, no commentary. Everything is counted in calendar months, and an activation belongs to the month it **activated** in, not the month the sale was recorded — so a deal that sat in vetting across a month boundary lands where the money landed.
 
-- The headline tiles are the month in progress: activations, activation value, calls logged and sales recorded, each compared with the same figure for the whole of last month.
-- **Target** shows how many activations you set for this month, how far you still have to go, and whether you have already reached it — set or clear it in **Data & settings → Monthly target**.
-- **Consistency** names your best completed month, your average per month that actually had an activation (empty months are not averaged in), and how many months in a row have at least one.
-- The **heat map** is one square per day of this month: calls and activations on the day, weekends and today shaded so gaps are obvious. A straight-line **projection** appears after the first few days of the month and always says it is a projection.
-- The **six-month bar chart** compares a metric you choose (activations, calls, value) month by month; click any month to open its activations.
-- The **month-by-month table** lists calls, activations, ATT/non-ATT, value and the change on the month before. Clicking a month opens that month's activations.
-- Below that, this month's **intake funnel** (sales recorded → activated, with the average days to activate), the packages activated this month, **insights** written from this month's own numbers rather than generic advice, and **ages out soon** — leads who turn 60 in the next month and can no longer be activated.
+- **Activated, Value, Sales recorded, Calls logged** — the month in progress, each with the change on all of last month. **ATT / Non-ATT** sits beside them.
+- **Target** — one line: `3 of 5`, a progress bar with last month marked, and what is left. Set it in **Data & settings → Monthly target**; without one the page just shows the link.
+- **Month by month** — six months of bars (switch between activations, calls and value) and a table of activated, ATT/non-ATT, value, sales and calls. Click a month to open its activations.
+- **Days this month** — one square per day, shaded by calls, numbers showing activations.
+- **Ages out soon** — the leads at 58 or 59 who leave the list on their next birthday.
 
-Everything is derived from your local workspace — the same attempt, sale and activation records shown elsewhere in the app — so it updates as you log outcomes, and nothing is sent anywhere. The numbers describe only your own calls: they cannot see colleagues' activity.
+The page is derived from your local workspace — the same records shown elsewhere in the app — so it updates as you log outcomes, and nothing is sent anywhere.
 
 ### Activations by month
 
-The **Activations** page shows the same records as a log, grouped into collapsible month sections with each month's activation count, ATT/non-ATT split and value subtotal. The newest month is open by default; older months are one click away. Searching for a customer opens the month that record is in, so a past activation never hides behind a collapsed section. Opening a month from the monthly performance page opens the same log on that month. Reversing or deleting an activation stays available here, with the same referral warnings as before.
+The **Activations** page shows the same records grouped into collapsible month sections with each month's count, ATT/non-ATT split and value subtotal. The newest month is open; older months are one click away. Searching a customer opens the month they are in. Opening a month from the monthly page opens the same log on that month. Reversing or deleting an activation stays available here, with the same referral warnings as before.
 
 ### How smart cycling works
 

@@ -178,11 +178,11 @@ describe('calling workflow', () => {
       fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
       expect(screen.getByRole('heading', { name: 'Monthly performance' })).toBeInTheDocument()
       // The month in progress, not a rolling window.
-      expect(screen.getByText('ACTIVATED THIS MONTH').parentElement).toHaveTextContent('01')
-      expect(screen.getByText('ACTIVATION VALUE').parentElement).toHaveTextContent('R200.00')
-      expect(screen.getByText('CALLS LOGGED').parentElement).toHaveTextContent('03')
-      expect(screen.getByText('SALES RECORDED').parentElement).toHaveTextContent('01')
-      expect(screen.getAllByText(/Insight Deal/).length).toBeGreaterThan(0)
+      const figures = within(screen.getByRole('group', { name: 'Month to date' }))
+      expect(figures.getByText('ACTIVATED').parentElement).toHaveTextContent('1')
+      expect(figures.getByText('VALUE').parentElement).toHaveTextContent('R200.00')
+      expect(figures.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
+      expect(figures.getByText('SALES RECORDED').parentElement).toHaveTextContent('1')
       // Every activation is reachable from the month it belongs to.
       fireEvent.click(screen.getByRole('button', { name: /October 2026: 1\. Open activations/ }))
       expect(screen.getByRole('dialog')).toHaveTextContent('Older Person')
@@ -370,8 +370,8 @@ describe('calling workflow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'SAVE' }))
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).settings.monthlyActivationTarget).toBe(4)
     fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
-    expect(screen.getByRole('heading', { name: '1 of 4 activations' })).toBeInTheDocument()
-    expect(screen.getByText('3 to go')).toBeInTheDocument()
+    expect(screen.getByText('1 of 4')).toBeInTheDocument()
+    expect(screen.getByText('3 TO GO')).toBeInTheDocument()
     // A target is a benchmark, not a change to what is counted.
     fireEvent.click(screen.getByRole('button', { name: /Data & settings/ }))
     fireEvent.change(screen.getByLabelText('Activations per month'), { target: { value: '' } })

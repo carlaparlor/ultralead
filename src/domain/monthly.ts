@@ -3,7 +3,7 @@ import { referralRewardCents } from './money'
 import {
   addMonths, daysInMonth, isSameMonth, monthBounds, monthKey, monthShort, monthsBetween, recentMonths, startOfMonth,
 } from './months'
-import type { Callback, Lead, Sale, Workspace } from './types'
+import type { Lead, Sale, Workspace } from './types'
 
 /**
  * Monthly performance, derived entirely from the local workspace.
@@ -64,23 +64,6 @@ export interface DayPoint {
   activations: number
 }
 
-export interface WeekPoint {
-  key: string
-  label: string
-  from: Date
-  to: Date
-  attempts: number
-  activations: number
-}
-
-export interface PackagePerformance {
-  name: string
-  count: number
-  valueCents: number
-  att: number
-  nonAtt: number
-}
-
 export interface MonthSummary {
   month: Date
   key: string
@@ -101,23 +84,11 @@ export interface MonthPerformance {
   previous: MonthSummary
   /** Every month that has any record, oldest first, for the trend table. */
   history: MonthSummary[]
-  /** The best month by activations, excluding the month in progress when there is history. */
-  best: { month: MonthSummary; activations: number } | null
-  /** Months with at least one activation, for an honest per-month average. */
-  activationsPerActiveMonth: number | null
-  streak: number
-  daysWithCallLast: Date | null
   daysLeft: number
   /** Straight-line projection of the current month's activations. */
   projectedActivations: number | null
-  /** Straight-line projection of the current month's activation value. */
-  projectedValueCents: number | null
   target: { activations: number | null; reachedAt: Date | null }
   days: DayPoint[]
-  weeks: WeekPoint[]
-  packages: PackagePerformance[]
-  /** The largest activation count in the trend, used for bar scaling. */
-  peak: number
   hasActivity: boolean
 }
 
@@ -267,34 +238,11 @@ export function monthlyPerformance(workspace: Workspace, now: Date, trendMonths 
   for (const sale of workspace.sales) { consider(sale.createdAt); consider(sale.activatedAt) }
   const history = earliest ? monthsBetween(earliest, currentMonth).map(month => summariseMonth(workspace, month, now)) : [current]
 
-  const completed = history.filter(month => !month.isCurrent && !month.isFuture)
-  const best = completed.length
-    ? completed.reduce((top, month) => (month.pipeline.activated > top.pipeline.activated ? month : top), completed[0])
-    : null
-  const activeMonths = completed.filter(month => month.pipeline.activated > 0)
-  const activationsPerActiveMonth = activeMonths.length
-    ? activeMonths.reduce((total, month) => total + month.pipeline.activated, 0) / activeMonths.length
-    : null
-
-  // Consecutive completed months up to and including this one with at least one activation.
-  let streak = 0
-  for (let index = history.length - 1; index >= 0; index--) {
-    if (history[index].pipeline.activated > 0) streak++
-    else if (!history[index].isCurrent) break
-  }
-
   const days = buildDays(workspace, currentMonth, now)
-  const weeks = buildWeeks(workspace, currentMonth, now)
-
-  const packages = packagePerformance(workspace, currentMonth, now)
-
-  const daysWithCall = days.filter(day => day.attempts > 0)
-  const daysWithCallLast = daysWithCall.length ? new Date(currentMonth.getFullYear(), currentMonth.getMonth(), daysWithCall[daysWithCall.length - 1].day) : null
 
   const total = daysInMonth(currentMonth)
   const elapsed = isSameMonth(currentMonth, now) ? now.getDate() : total
   const projectedActivations = elapsed >= 3 && current.pipeline.activated > 0 ? (current.pipeline.activated / elapsed) * total : null
-  const projectedValueCents = elapsed >= 3 && current.pipeline.activatedValueCents > 0 ? (current.pipeline.activatedValueCents / elapsed) * total : null
 
   const targetValue = safeTarget(workspace.settings.monthlyActivationTarget)
   const reachedAt = targetValue === null ? null : reachedDate(workspace, currentMonth, now, targetValue)
@@ -304,18 +252,10 @@ export function monthlyPerformance(workspace: Workspace, now: Date, trendMonths 
     current,
     previous,
     history,
-    best: best && best.pipeline.activated > 0 ? { month: best, activations: best.pipeline.activated } : null,
-    activationsPerActiveMonth,
-    streak,
-    daysWithCallLast,
     daysLeft: Math.max(0, daysInMonth(currentMonth) - now.getDate()),
     projectedActivations,
-    projectedValueCents,
     target: { activations: targetValue, reachedAt },
     days,
-    weeks,
-    packages,
-    peak: Math.max(1, ...history.map(month => month.pipeline.activated)),
     hasActivity: history.some(month => month.calls.attempts > 0 || month.pipeline.recorded > 0 || month.pipeline.activated > 0),
   }
 }
@@ -360,55 +300,6 @@ function buildDays(workspace: Workspace, month: Date, now: Date): DayPoint[] {
   return points
 }
 
-/** One row per calendar week, cut at month edges, so a week never leaks into another month. */
-function buildWeeks(workspace: Workspace, month: Date, now: Date): WeekPoint[] {
-  const total = daysInMonth(month)
-  const weeks: WeekPoint[] = []
-  let start = 1
-  while (start <= total) {
-    const date = new Date(month.getFullYear(), month.getMonth(), start)
-    // Weeks run Monday to Sunday; the first row can be short.
-    const offset = (date.getDay() + 6) % 7
-    const end = Math.min(total, start + (6 - offset))
-    const from = new Date(month.getFullYear(), month.getMonth(), start)
-    const to = new Date(month.getFullYear(), month.getMonth(), end, 23, 59, 59, 999)
-    weeks.push({
-      key: `${monthKey(month)}-w${weeks.length + 1}`,
-      label: `${start}–${end}`,
-      from, to, attempts: 0, activations: 0,
-    })
-    start = end + 1
-  }
-  for (const profile of Object.values(workspace.profiles)) {
-    for (const attempt of profile.attempts) {
-      if (!inMonth(attempt.at, month)) continue
-      const time = new Date(attempt.at).getTime()
-      const week = weeks.find(item => time >= item.from.getTime() && time <= item.to.getTime())
-      if (week) week.attempts++
-    }
-  }
-  for (const sale of monthActivations(workspace, month, now)) {
-    const time = new Date(sale.activatedAt!).getTime()
-    const week = weeks.find(item => time >= item.from.getTime() && time <= item.to.getTime())
-    if (week) week.activations++
-  }
-  return weeks
-}
-
-function packagePerformance(workspace: Workspace, month: Date, now: Date): PackagePerformance[] {
-  const map = new Map<string, PackagePerformance>()
-  for (const sale of monthActivations(workspace, month, now)) {
-    const key = sale.packageName.toLowerCase()
-    const entry = map.get(key) ?? { name: sale.packageName, count: 0, valueCents: 0, att: 0, nonAtt: 0 }
-    entry.count++
-    entry.valueCents += sale.packagePriceCents ?? 0
-    if (sale.activationType === 'ATT') entry.att++
-    else if (sale.activationType === 'Non-ATT') entry.nonAtt++
-    map.set(key, entry)
-  }
-  return [...map.values()].sort((a, b) => b.count - a.count || b.valueCents - a.valueCents || a.name.localeCompare(b.name))
-}
-
 /** Activations grouped by calendar month, newest first, for the Activations page. */
 export interface ActivationGroup {
   key: string
@@ -441,84 +332,6 @@ export function groupActivationsByMonth(workspace: Workspace, now: Date): Activa
     groups.set(key, group)
   }
   return [...groups.values()].sort((a, b) => b.month.getTime() - a.month.getTime())
-}
-
-/** What to do next, derived from this month's data rather than a generic hint. */
-export interface MonthlyInsight {
-  id: string
-  tone: 'good' | 'watch' | 'act'
-  title: string
-  detail: string
-}
-
-export function monthlyInsights(performance: MonthPerformance): MonthlyInsight[] {
-  const insights: MonthlyInsight[] = []
-  const { current, previous, target } = performance
-  const activations = current.pipeline.activated
-
-  if (target.activations !== null) {
-    if (activations >= target.activations) {
-      insights.push({
-        id: 'target-hit', tone: 'good', title: `Target reached: ${activations} of ${target.activations}`,
-        detail: target.reachedAt ? `Crossed on ${new Intl.DateTimeFormat('en-ZA', { day: 'numeric', month: 'short' }).format(target.reachedAt)}. Anything more is ahead of plan.` : 'Ahead of plan for the month.',
-      })
-    } else {
-      const remaining = target.activations - activations
-      insights.push({
-        id: 'target-gap', tone: performance.projectedActivations !== null && performance.projectedActivations < target.activations ? 'act' : 'watch',
-        title: `${remaining} activation${remaining === 1 ? '' : 's'} short of target`,
-        detail: `${performance.daysLeft} day${performance.daysLeft === 1 ? '' : 's'} left in the month${performance.projectedActivations !== null ? `, on pace for about ${Math.round(performance.projectedActivations)}` : `, and ${activations} so far`}.`,
-      })
-    }
-  }
-
-  if (current.pipeline.activatedWithoutPrice > 0) {
-    insights.push({
-      id: 'unpriced', tone: 'act', title: `${current.pipeline.activatedWithoutPrice} activation${current.pipeline.activatedWithoutPrice === 1 ? '' : 's'} without a price`,
-      detail: 'Activation value and referral rewards stay blank until a deal price is added. Open the activation and set the price.',
-    })
-  }
-  if (current.value.referralDueCents > 0) {
-    insights.push({
-      id: 'referrals-due', tone: 'watch', title: 'Referral rewards are ready to pay',
-      detail: 'These activations earned a reward that is still unpaid. Send it yourself, then mark it paid in Referrals.',
-    })
-  }
-
-  const declineRate = current.pipeline.recorded ? current.pipeline.declined / current.pipeline.recorded : 0
-  if (previous && current.pipeline.recorded >= 3 && declineRate > 0.34) {
-    insights.push({
-      id: 'declines', tone: 'watch', title: `${Math.round(declineRate * 100)}% of this month's sales were declined at vetting`,
-      detail: 'Check the package fit before submitting; declined sales never reach activation.',
-    })
-  }
-  if (current.calls.attempts >= 10 && current.pipeline.activated === 0 && current.pipeline.recorded === 0) {
-    insights.push({
-      id: 'no-conversion', tone: 'act', title: 'Plenty of calls, nothing recorded as a sale',
-      detail: 'Log the outcome of every conversation so the month reflects the work. A sale starts in credit vetting and only counts as an activation once it activates.',
-    })
-  }
-  if (previous && previous.calls.attempts >= 20) {
-    const delta = current.calls.attempts / previous.calls.attempts - 1
-    if (delta < -0.3) {
-      insights.push({
-        id: 'effort-down', tone: 'watch', title: 'Fewer calls than last month',
-        detail: 'Activity is down sharply, which usually shows up as fewer activations two to three weeks later.',
-      })
-    }
-  }
-  if (previous && previous.pipeline.activated > 0 && activations < previous.pipeline.activated) {
-    const gap = previous.pipeline.activated - activations
-    insights.push({
-      id: 'behind-last-month', tone: 'watch', title: `${gap} behind last month`,
-      detail: `Last month finished with ${previous.pipeline.activated}. ${performance.daysLeft} day${performance.daysLeft === 1 ? '' : 's'} left to close the gap.`,
-    })
-  }
-  if (performance.streak >= 2) {
-    insights.push({ id: 'streak', tone: 'good', title: `${performance.streak} months in a row with an activation`, detail: 'Consistency is the useful signal here, not a single big month.' })
-  }
-
-  return insights.slice(0, 4)
 }
 
 export interface DeadlineLead {
@@ -566,13 +379,6 @@ export function deadlineLeads(workspace: Workspace, now: Date, limit = 6): Deadl
       || (a.lastAttemptAt ? new Date(a.lastAttemptAt).getTime() : 0) - (b.lastAttemptAt ? new Date(b.lastAttemptAt).getTime() : 0)
       || b.attempts30 - a.attempts30)
     .slice(0, limit)
-}
-
-/** Callbacks still scheduled for the current month, so the month's remaining work is visible. */
-export function callbacksThisMonth(workspace: Workspace, now: Date): Callback[] {
-  return workspace.callbacks
-    .filter(callback => inMonth(callback.dueAt, now))
-    .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
 }
 
 export function isMonthKey(value: string | null): value is string {

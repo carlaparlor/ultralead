@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { emptyProfile, type CallAttempt, type Workspace } from './types'
 import { createEmptyWorkspace, recordSale, updateSaleStage } from './workspace'
 import { makeLead } from './testFixtures'
-import { groupActivationsByMonth, isMonthKey, monthTrend, monthlyInsights, monthlyPerformance } from './monthly'
+import { groupActivationsByMonth, isMonthKey, monthTrend, monthlyPerformance } from './monthly'
 
 const NOW = new Date(2026, 10, 18, 12, 0, 0) // 18 November 2026
 
@@ -102,19 +102,6 @@ describe('monthlyPerformance', () => {
     expect(monthlyPerformance(workspace, NOW).projectedActivations).toBeGreaterThan(0)
   })
 
-  it('averages over active months only, best month excludes the one in progress', () => {
-    const workspace = merge(
-      activated('5-1', new Date(2026, 8, 5)),
-      activated('5-2', new Date(2026, 8, 6)),
-      activated('5-3', new Date(2026, 9, 5)),
-      activated('5-4', new Date(2026, 10, 5)),
-    )
-    const performance = monthlyPerformance(workspace, NOW)
-    expect(performance.activationsPerActiveMonth).toBeCloseTo(3 / 2, 5)
-    expect(performance.best?.month.key).toBe('2026-09')
-    expect(performance.streak).toBe(3)
-  })
-
   it('measures a target against this month only', () => {
     const settings = { ...createEmptyWorkspace(NOW).settings, monthlyActivationTarget: 2 }
     const one = { ...merge(activated('5-1', new Date(2026, 10, 5)), activated('5-6', new Date(2026, 9, 5))), settings }
@@ -130,20 +117,8 @@ describe('monthlyPerformance', () => {
     expect(performance.hasActivity).toBe(false)
     expect(performance.current.pipeline.activated).toBe(0)
     expect(performance.previous.key).toBe('2026-10')
-    expect(performance.best).toBeNull()
-    expect(performance.packages).toEqual([])
     expect(performance.days).toHaveLength(30)
     expect(performance.months.every(month => month.pipeline.activated === 0)).toBe(true)
-  })
-})
-
-describe('monthlyInsights', () => {
-  it('points at what is happening rather than offering generic advice', () => {
-    const workspace = { ...merge(activated('5-1', new Date(2026, 9, 4)), activated('5-2', new Date(2026, 10, 5))), settings: { ...createEmptyWorkspace(NOW).settings, monthlyActivationTarget: 3 } }
-    const insights = monthlyInsights(monthlyPerformance(workspace, NOW))
-    expect(insights.length).toBeGreaterThan(0)
-    expect(insights.map(insight => insight.id)).toContain('target-gap')
-    expect(insights.every(insight => insight.detail.length > 0)).toBe(true)
   })
 })
 

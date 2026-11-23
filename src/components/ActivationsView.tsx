@@ -91,7 +91,7 @@ export function ActivationsView({ workspace, now, onEdit, onUndo, onRemove, onOp
 
   return <>
     <div className={`page-heading view-heading activation-heading ${fixedPeriod ? 'activation-heading-dialog' : ''}`}>
-      <div><div className="eyebrow referral-eyebrow"><span className="eyebrow-line" /> MONTH BY MONTH</div><h1>Activations</h1><p>{periodLabel(period, now)} · grouped by the month each one activated in.</p></div>
+      <div><div className="eyebrow referral-eyebrow"><span className="eyebrow-line" /> MONTH BY MONTH</div><h1>Activations</h1><p>{periodLabel(period, now)}</p></div>
       {!fixedPeriod && <span className="heading-note">{thisMonthCount ? `${thisMonthCount} this month` : 'none this month yet'}{previousGroup ? ` · ${previousGroup.count} last month` : ''}</span>}
     </div>
 
@@ -140,6 +140,6 @@ export function ActivationsView({ workspace, now, onEdit, onUndo, onRemove, onOp
             {!closed && <div className="table-wrap"><table><thead><tr><th>CUSTOMER</th><th>PACKAGE</th><th>TYPE</th><th>ACTIVATED</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{sales.map(sale => <tr key={sale.id}><td><div className="table-person"><Initials name={sale.lead.name} /><span><strong>{sale.lead.name}</strong><small>{sale.lead.accountNumber}</small></span></div></td><td><div className="activation-package"><span>{sale.packageName}</span><small>{sale.packagePriceCents === null ? 'PRICE NOT SET' : formatRand(sale.packagePriceCents)}</small></div></td><td>{sale.activationType ? <StatusPill tone="good">{sale.activationType.toUpperCase()}</StatusPill> : <StatusPill tone="warning">NEEDS TYPE</StatusPill>}</td><td className="table-muted">{sale.activatedAt ? formatDate(sale.activatedAt) : '—'}</td><td><div className="row-actions"><button className="icon-button" onClick={() => onOpenCustomer(sale.lead.accountNumber)} aria-label={`Notes and history for ${sale.lead.name}`} title="Notes & history"><NotebookPen size={15} /></button><button className="icon-button" onClick={() => onEdit(sale)} aria-label={`Edit activation for ${sale.lead.name}`}><Pencil size={15} /></button><button className="icon-button" onClick={() => onUndo(sale)} aria-label={`Move ${sale.lead.name} back to confirmation`} title="Move back to confirmation"><CornerUpLeft size={15} /></button><button className="icon-button row-delete" onClick={() => onRemove(sale)} aria-label={`Delete activation for ${sale.lead.name}`}><Trash2 size={15} /></button></div></td></tr>)}</tbody></table></div>}
           </section>
         })}</div>}
-    <div className="under-table"><span>SHOWING {filtered.length} OF {scoped.length} ACTIVATIONS</span><span>TYPE IS RECORDED AT ACTIVATION · GROUPED BY ACTIVATION MONTH.</span></div>
+    <div className="under-table"><span>SHOWING {filtered.length} OF {scoped.length} ACTIVATIONS</span></div>
   </>
 }
