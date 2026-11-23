@@ -84,7 +84,6 @@ export function ActivationsView({ workspace, now, onEdit, onUndo, onRemove, onOp
 
   const att = scoped.filter(sale => sale.activationType === 'ATT').length
   const unpriced = scoped.filter(sale => sale.packagePriceCents === null).length
-  const value = scoped.reduce((total, sale) => total + (sale.packagePriceCents ?? 0), 0)
   const thisMonthCount = groups.find(group => group.isCurrent)?.count ?? 0
   const previousGroup = groups.find(group => !group.isCurrent && group.month.getTime() === addMonths(startOfMonth(reference), -1).getTime())
   const toggle = (key: string) => setToggled(previous => ({ ...previous, [key]: !(previous[key] ?? true) }))
@@ -99,7 +98,7 @@ export function ActivationsView({ workspace, now, onEdit, onUndo, onRemove, onOp
       <div><span>ACTIVATED</span><strong>{String(scoped.length).padStart(2, '0')}</strong></div>
       <div><span>ATT</span><strong>{String(att).padStart(2, '0')}</strong></div>
       <div><span>NON-ATT</span><strong>{String(scoped.length - att).padStart(2, '0')}</strong></div>
-      <div><span>VALUE</span><strong>{formatRand(value)}</strong>{unpriced > 0 && <small>{unpriced} without a price</small>}</div>
+      {unpriced > 0 && <div><span>NO PRICE</span><strong>{String(unpriced).padStart(2, '0')}</strong></div>}
     </div>
 
     <div className="list-toolbar"><div className="toolbar-controls">
@@ -134,7 +133,7 @@ export function ActivationsView({ workspace, now, onEdit, onUndo, onRemove, onOp
               <div className="activation-month-figures">
                 <span><i className="dot-att" />{groupAtt} ATT</span>
                 <span><i className="dot-nonatt" />{sales.length - groupAtt} non-ATT</span>
-                <span>{formatRand(group.valueCents)}{group.withoutPrice > 0 ? ` + ${group.withoutPrice} unpriced` : ''}</span>
+                {group.withoutPrice > 0 && <span>{group.withoutPrice} unpriced</span>}
               </div>
             </div>
             {!closed && <div className="table-wrap"><table><thead><tr><th>CUSTOMER</th><th>PACKAGE</th><th>TYPE</th><th>ACTIVATED</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{sales.map(sale => <tr key={sale.id}><td><div className="table-person"><Initials name={sale.lead.name} /><span><strong>{sale.lead.name}</strong><small>{sale.lead.accountNumber}</small></span></div></td><td><div className="activation-package"><span>{sale.packageName}</span><small>{sale.packagePriceCents === null ? 'PRICE NOT SET' : formatRand(sale.packagePriceCents)}</small></div></td><td>{sale.activationType ? <StatusPill tone="good">{sale.activationType.toUpperCase()}</StatusPill> : <StatusPill tone="warning">NEEDS TYPE</StatusPill>}</td><td className="table-muted">{sale.activatedAt ? formatDate(sale.activatedAt) : '—'}</td><td><div className="row-actions"><button className="icon-button" onClick={() => onOpenCustomer(sale.lead.accountNumber)} aria-label={`Notes and history for ${sale.lead.name}`} title="Notes & history"><NotebookPen size={15} /></button><button className="icon-button" onClick={() => onEdit(sale)} aria-label={`Edit activation for ${sale.lead.name}`}><Pencil size={15} /></button><button className="icon-button" onClick={() => onUndo(sale)} aria-label={`Move ${sale.lead.name} back to confirmation`} title="Move back to confirmation"><CornerUpLeft size={15} /></button><button className="icon-button row-delete" onClick={() => onRemove(sale)} aria-label={`Delete activation for ${sale.lead.name}`}><Trash2 size={15} /></button></div></td></tr>)}</tbody></table></div>}

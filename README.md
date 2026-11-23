@@ -61,27 +61,27 @@ A row needs a name before a `5-` followed by digits. A 13-digit customer ID and 
 4. A reward becomes **Ready to pay** only after the linked sale passes vetting and confirmation and is activated: **R20 for a package costing R200.00 or less**, and **R30 for a package costing more than R200.00**. Exact cents are used, so R200.01 earns R30. Declined, unactivated or unpriced sales are not payable. The tracker shows the amount due and a per-referrer total.
 5. Send the money yourself, then choose **Mark paid** and confirm. The app does **not** send payments, contact people, or store banking details. If browser storage fails, the app warns that the mark is only in memory; export a backup before leaving. Payment history records the recipient, customer, sale, price, activation and amount. If an activation is reversed, removed or its package/price is changed after payment, the record remains paid and is flagged for review; it is never automatically paid twice. For a price change on the same activation, the tracker compares the recalculated reward with the recorded payment and shows any possible difference. This difference is not included in ready-to-pay totals. Additional payments and refunds cannot be recorded in the app and must be tracked separately. Use **Payment history → Correct paid mark** only if the mark was entered in error: this does not reverse a real transfer and may make the referral due again.
 
-**Managing referrers.** In **Referrals → Your referrers**, **Add referrer** records someone before their first introduction, with a contact and a private note (how you know them, the best time to call, what they usually refer). Each card shows their referrals, what is ready to pay, what has been paid and a one-line progress summary; **View referrals** filters the tracker to that person, and the search matches names, contacts and notes. Editing a person updates their name and contact everywhere they appear, but payment history keeps the name recorded when the money was marked paid. **Archive** stops someone being chosen for new referrals while keeping all of their referrals, totals and payments; restore them at any time. Deleting is still only offered when a person has no referrals. A loose name match (ignoring capitals and extra spaces) shows a duplicate warning, but never blocks you, because two people can share a name.
+**Managing referrers.** In **Referrals → Referrers**, **Add referrer** records someone before their first introduction, with a contact and a private note (how you know them, the best time to call, what they usually refer). Each card shows their referrals, what is ready to pay, what has been paid and a one-line progress summary; **View referrals** filters the tracker to that person, and the search matches names, contacts and notes. Editing a person updates their name and contact everywhere they appear, but payment history keeps the name recorded when the money was marked paid. **Archive** stops someone being chosen for new referrals while keeping all of their referrals, totals and payments; restore them at any time. Deleting is still only offered when a person has no referrals. A loose name match (ignoring capitals and extra spaces) shows a duplicate warning, but never blocks you, because two people can share a name.
 
 Referrer notes are private text in the same workspace, so they appear in exports and backups: do not write banking details or anything you would not store about a customer. Archived people are kept out of new referrals only; their existing records and totals are untouched.
 
 Referrals, contacts and payment history are stored in the same private browser workspace and backups as the rest of the data. Tabs are last-write-wins, so check the current records before paying and do not treat this as a shared payment ledger. An individual referral with payment history is retained to avoid losing that record; the explicitly confirmed **Clear referrals & payment history** action removes all of it. On upgrade, the old workspace is migrated and removed only after the new copy saves successfully. Close old app tabs first: older app versions do not synchronize with the upgraded workspace.
 
-### Monthly performance
+### Insights
 
-One page, five numbers, no commentary. Everything is counted in calendar months, and an activation belongs to the month it **activated** in, not the month the sale was recorded — so a deal that sat in vetting across a month boundary lands where the money landed.
+One page, month by month. An activation belongs to the month it **activated** in, not the month the sale was recorded.
 
-- **Activated, Value, Sales recorded, Calls logged** — the month in progress, each with the change on all of last month. **ATT / Non-ATT** sits beside them.
-- **Target** — one line: `3 of 5`, a progress bar with last month marked, and what is left. Set it in **Data & settings → Monthly target**; without one the page just shows the link.
-- **Month by month** — six months of bars (switch between activations, calls and value) and a table of activated, ATT/non-ATT, value, sales and calls. Click a month to open its activations.
+- **Activated, Sales recorded, Calls logged, ATT / Non-ATT** — the month in progress, each with the change on last month.
+- **Target** — one line: `3 of 5`, a progress bar with last month marked, and what is left. Set it in **Data & settings → Monthly target**.
+- **Month by month** — six months of bars (activations or calls). Click a month to open its activations.
 - **Days this month** — one square per day, shaded by calls, numbers showing activations.
 - **Ages out soon** — the leads at 58 or 59 who leave the list on their next birthday.
 
 The page is derived from your local workspace — the same records shown elsewhere in the app — so it updates as you log outcomes, and nothing is sent anywhere.
 
-### Activations by month
+### Activations
 
-The **Activations** page shows the same records grouped into collapsible month sections with each month's count, ATT/non-ATT split and value subtotal. The newest month is open; older months are one click away. Searching a customer opens the month they are in. Opening a month from the monthly page opens the same log on that month. Reversing or deleting an activation stays available here, with the same referral warnings as before.
+The **Activations** page groups records into collapsible month sections with each month's count, ATT/non-ATT split and any activations still missing a price. The newest month is open; older months are one click away. Searching a customer opens the month they are in. Opening a month from Insights opens the same log on that month. Reversing or deleting an activation stays available here, with the same referral warnings as before.
 
 ### How smart cycling works
 

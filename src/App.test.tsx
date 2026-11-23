@@ -176,11 +176,10 @@ describe('calling workflow', () => {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
       render(<App />)
       fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
-      expect(screen.getByRole('heading', { name: 'Monthly performance' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Insights' })).toBeInTheDocument()
       // The month in progress, not a rolling window.
       const figures = within(screen.getByRole('group', { name: 'Month to date' }))
       expect(figures.getByText('ACTIVATED').parentElement).toHaveTextContent('1')
-      expect(figures.getByText('VALUE').parentElement).toHaveTextContent('R200.00')
       expect(figures.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
       expect(figures.getByText('SALES RECORDED').parentElement).toHaveTextContent('1')
       // Every activation is reachable from the month it belongs to.
@@ -379,7 +378,7 @@ describe('calling workflow', () => {
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).settings.monthlyActivationTarget).toBeNull()
   })
 
-  it('opens the activation log on the month chosen from the monthly table', () => {
+  it('opens the activation log on the month chosen from the chart', () => {
     const now = new Date()
     const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 12, 10)
     const a = makeLead('5-911', { name: 'This Month Person' }), b = makeLead('5-912', { name: 'Last Month Person' })
@@ -394,7 +393,7 @@ describe('calling workflow', () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
     const label = new Intl.DateTimeFormat('en-ZA', { month: 'long', year: 'numeric' }).format(lastMonth)
-    fireEvent.click(within(screen.getByRole('table')).getByRole('button', { name: new RegExp(label) }))
+    fireEvent.click(screen.getByRole('button', { name: `${label}: 1. Open activations.` }))
     const sheet = within(screen.getByRole('dialog'))
     // The dialog opens straight on that month, so no extra filtering is needed.
     expect(sheet.getByText('Last Month Person')).toBeInTheDocument()

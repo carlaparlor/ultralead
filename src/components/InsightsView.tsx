@@ -12,11 +12,10 @@ import { EmptyState, Initials } from './ui'
  * Anything that only described the numbers instead of showing them was removed.
  */
 
-type Metric = 'activations' | 'calls' | 'value'
+type Metric = 'activations' | 'calls'
 const METRICS: { id: Metric; label: string }[] = [
   { id: 'activations', label: 'ACTIVATIONS' },
   { id: 'calls', label: 'CALLS' },
-  { id: 'value', label: 'VALUE' },
 ]
 
 const percent = (value: number) => `${Math.round(value * 100)}%`
@@ -55,7 +54,7 @@ export function InsightsView({ workspace, now, onNavigate, onOpenCustomer, onOpe
 
   if (!performance.hasActivity) {
     return <>
-      <div className="page-heading view-heading"><div><h1>Monthly performance</h1></div></div>
+      <div className="page-heading view-heading"><div><h1>Insights</h1></div></div>
       <div className="table-empty"><EmptyState title="Nothing to measure yet." action={<button className="button button-primary" onClick={() => onNavigate('overview')}>GO TO THE DESK <ArrowRight size={15} /></button>}>
         Log calls and activations and the month fills in.
       </EmptyState></div>
@@ -64,7 +63,7 @@ export function InsightsView({ workspace, now, onNavigate, onOpenCustomer, onOpe
 
   const targetValue = target.activations
   const targetProgress = targetValue ? Math.min(1, current.pipeline.activated / targetValue) : 0
-  const metricValue = (month: MonthSummary) => metric === 'calls' ? month.calls.attempts : metric === 'value' ? month.pipeline.activatedValueCents : month.pipeline.activated
+  const metricValue = (month: MonthSummary) => metric === 'calls' ? month.calls.attempts : month.pipeline.activated
   const peak = Math.max(1, ...performance.history.map(metricValue))
   const callingDays = performance.days.filter(day => day.attempts > 0).length
   const rewardsDue = current.value.referralDueCents
@@ -72,7 +71,7 @@ export function InsightsView({ workspace, now, onNavigate, onOpenCustomer, onOpe
   return <>
     <div className="page-heading view-heading month-heading">
       <div>
-        <h1>Monthly performance</h1>
+        <h1>Insights</h1>
         <p>{current.label} · {performance.daysLeft} day{performance.daysLeft === 1 ? '' : 's'} left</p>
       </div>
       <button className="button button-outline button-small" onClick={() => onOpenActivations(current.key)}>ALL ACTIVATIONS <ArrowRight size={14} /></button>
@@ -81,8 +80,6 @@ export function InsightsView({ workspace, now, onNavigate, onOpenCustomer, onOpe
     <div className="month-figures" role="group" aria-label="Month to date">
       <Figure label="ACTIVATED" value={String(current.pipeline.activated)} onClick={() => onOpenActivations(current.key)}
         comparison={monthTrend(current.pipeline.activated, previous.pipeline.activated)} />
-      <Figure label="VALUE" value={current.pipeline.activatedValueCents ? formatRand(current.pipeline.activatedValueCents) : '—'}
-        comparison={monthTrend(current.pipeline.activatedValueCents, previous.pipeline.activatedValueCents)} />
       <Figure label="SALES RECORDED" value={String(current.pipeline.recorded)}
         comparison={monthTrend(current.pipeline.recorded, previous.pipeline.recorded)} />
       <Figure label="CALLS LOGGED" value={String(current.calls.attempts)}
@@ -110,30 +107,16 @@ export function InsightsView({ workspace, now, onNavigate, onOpenCustomer, onOpe
           {METRICS.map(item => <button key={item.id} className={metric === item.id ? 'is-on' : ''} aria-pressed={metric === item.id} onClick={() => setMetric(item.id)}>{item.label}</button>)}
         </div>
       </div>
-      <div className="month-bars" aria-label={`${metric === 'calls' ? 'Calls logged' : metric === 'value' ? 'Activation value' : 'Activations'} per month, oldest first`} role="group">
+      <div className="month-bars" aria-label={`${metric === 'calls' ? 'Calls logged' : 'Activations'} per month, oldest first`} role="group">
         {performance.months.map(month => {
           const value = metricValue(month)
           return <button className={`month-bar-column ${month.isCurrent ? 'is-current' : ''}`} key={month.key} title={`Open ${month.label} activations`} onClick={() => onOpenActivations(month.key)}
-            aria-label={`${month.label}: ${metric === 'value' ? formatRand(value) : value}. Open activations.`}>
-            <span className="month-bar-value">{metric === 'value' ? formatRand(value) : value}</span>
+            aria-label={`${month.label}: ${value}. Open activations.`}>
+            <span className="month-bar-value">{value}</span>
             <div className="month-bar-area"><span className="month-bar" style={{ height: `${Math.max(value ? 3 : 0, (value / peak) * 100)}%` }} /></div>
             <span className="month-bar-label">{month.short}</span>
           </button>
         })}
-      </div>
-      <div className="month-table-wrap">
-        <table className="month-table">
-          <caption className="sr-only">Month by month performance</caption>
-          <thead><tr><th scope="col">MONTH</th><th scope="col">ACTIVATED</th><th scope="col">ATT / NON</th><th scope="col">VALUE</th><th scope="col">SALES</th><th scope="col">CALLS</th></tr></thead>
-          <tbody>{[...performance.history].reverse().map(month => <tr key={month.key} className={month.isCurrent ? 'is-current' : ''}>
-            <th scope="row"><button className="month-table-link" onClick={() => onOpenActivations(month.key)}>{month.label}{month.isCurrent && <span className="month-now">NOW</span>}</button></th>
-            <td>{month.pipeline.activated}</td>
-            <td>{month.pipeline.att} / {month.pipeline.nonAtt}</td>
-            <td>{formatRand(month.pipeline.activatedValueCents)}{month.pipeline.activatedWithoutPrice > 0 && <small> +{month.pipeline.activatedWithoutPrice} unpriced</small>}</td>
-            <td>{month.pipeline.recorded}</td>
-            <td>{month.calls.attempts}</td>
-          </tr>)}</tbody>
-        </table>
       </div>
     </section>
 

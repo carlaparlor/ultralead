@@ -102,8 +102,7 @@ describe('referral workflow', () => {
     fireEvent.click(dialog().getByRole('button', { name: 'MOVE BACK' }))
     openReferrals()
     expect(referralRow('New Customer').getByText('Paid · review')).toBeInTheDocument()
-    expect(referralRow('New Customer').getByText(/recorded activation is missing, has changed, or has no valid price/)).toBeInTheDocument()
-    expect(referralRow('New Customer').getByText(/Any difference is excluded from ready-to-pay totals/)).toBeInTheDocument()
+    expect(referralRow('New Customer').getByText('No comparable price on the activation.')).toBeInTheDocument()
     expect(referralRow('New Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
     fireEvent.click(referralRow('New Customer').getByRole('button', { name: 'PAYMENT HISTORY' }))
     expect(dialog().getByText(/Everyday plan/)).toBeInTheDocument()
@@ -160,9 +159,9 @@ describe('referral workflow', () => {
   })
 
   it.each([
-    { original: 20_000, edited: '200.01', paid: 'R20.00', recalculated: 'R30.00', result: 'Possible shortfall: R10.00.' },
-    { original: 20_001, edited: '200.00', paid: 'R30.00', recalculated: 'R20.00', result: 'Possible overpayment: R10.00.' },
-    { original: 20_000, edited: '199.99', paid: 'R20.00', recalculated: 'R20.00', result: 'The reward amount is unchanged.' },
+    { original: 20_000, edited: '200.01', paid: 'R20.00', recalculated: 'R30.00', result: 'shortfall R10.00' },
+    { original: 20_001, edited: '200.00', paid: 'R30.00', recalculated: 'R20.00', result: 'overpaid R10.00' },
+    { original: 20_000, edited: '199.99', paid: 'R20.00', recalculated: 'R20.00', result: 'unchanged' },
   ])('reviews a changed package price: $result', ({ original, edited, paid, recalculated, result }) => {
     const now = new Date()
     const lead = makeLead('5-779', { name: 'Price Review Customer' })
@@ -185,8 +184,7 @@ describe('referral workflow', () => {
 
     const row = () => screen.getByRole('article', { name: 'Referral for Price Review Customer' })
     expect(row()).toHaveTextContent('Paid · review')
-    expect(row()).toHaveTextContent(`Recalculated reward: ${recalculated} · Recorded as paid: ${paid}. ${result}`)
-    expect(row()).toHaveTextContent('additional payments or refunds cannot be recorded here')
+    expect(row()).toHaveTextContent(`Recalculated ${recalculated} · paid ${paid} · ${result}.`)
     expect(referralRow('Price Review Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
     const summary = within(screen.getByRole('region', { name: 'Referral summary' }))
     expect(summary.getByText('READY TO PAY').parentElement).toHaveTextContent('R0.00')
@@ -208,7 +206,7 @@ describe('referral workflow', () => {
     fireEvent.click(dialog().getByRole('button', { name: 'SAVE CHANGES' }))
     openReferrals()
     expect(referralRow('Price Review Customer').getByText('Paid', { selector: '.status-pill' })).toBeInTheDocument()
-    expect(row()).not.toHaveTextContent('Payment needs review')
+    expect(row()).not.toHaveTextContent('Needs review')
     expect(referralRow('Price Review Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
   })
 

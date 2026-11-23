@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Archive, ArrowRight, ArchiveRestore, Check, Gift, Link2, NotebookPen, Pencil, Plus, Search, Trash2, UsersRound, Wallet, X } from 'lucide-react'
+import { Archive, ArrowRight, ArchiveRestore, Check, Link2, NotebookPen, Pencil, Plus, Search, Trash2, UsersRound, Wallet, X } from 'lucide-react'
 import { formatDate } from '../domain/dates'
 import { formatRand } from '../domain/money'
 import { createReferralIndex, paymentReviewComparison, referralAttentionStatuses, referralState, summariseReferrers, type ReferralState, type ReferralStatus, type ReferrerTotals } from '../domain/referrals'
@@ -82,16 +82,6 @@ function ReferralRow({ state, onEdit, onRemove, onAddToLeads, onVerify, onCall, 
   const canCall = leadReadiness === 'ready' || leadReadiness === 'callback_due'
   const canOverride = leadReadiness === 'callback_scheduled' || leadReadiness === 'cooldown' || leadReadiness === 'daily_limit'
   const comparison = paymentReviewComparison(state)
-  const explanation = sale
-    ? `${sale.packageName}${sale.packagePriceCents === null ? ' · price not set' : ` · ${formatRand(sale.packagePriceCents)}`}`
-    : payment ? 'The original sale is no longer available. Review the payment history.'
-      : !account ? 'Add an account to connect this customer to the pipeline.'
-        : status === 'not_in_list' ? 'Import this customer or add them to your lead list.'
-          : status === 'sale_missing' ? 'The sale was removed. Use All leads to return the customer to the queue if appropriate.'
-            : status === 'age_review' ? 'Verify the customer is under 60 before calling.'
-              : status === 'excluded' ? 'This customer is excluded from calling. Check the source system.'
-                : status === 'not_interested' ? 'This customer is marked not interested and is out of the queue.'
-                  : 'Waiting for a sale to be recorded.'
   return <article className={`referral-row ${status === 'ready' ? 'referral-row-ready' : ''}`} aria-label={`Referral for ${referral.customerName}`}>
     <div className="referral-row-grid">
       <div className="referral-customer"><Initials name={referral.customerName} /><div><h3>{referral.customerName}</h3><small>{account ?? 'ACCOUNT NOT LINKED'}</small>{referral.customerContact && <small>{referral.customerContact}</small>}</div></div>
@@ -99,12 +89,10 @@ function ReferralRow({ state, onEdit, onRemove, onAddToLeads, onVerify, onCall, 
       <div className="referral-cell referral-stage"><span className="referral-cell-label">PROGRESS</span><StatusPill tone={statusTone(status)}>{labels[status]}</StatusPill></div>
       <div className="referral-cell referral-amount"><span className="referral-cell-label">REWARD</span><strong>{payment ? formatRand(payment.amountCents) : state.dueCents ? formatRand(state.dueCents) : '—'}</strong><small>{payment ? `Paid ${formatDate(payment.paidAt, { day: 'numeric', month: 'short', year: 'numeric' })}` : state.dueCents ? 'Due after activation' : 'Not due yet'}</small></div>
     </div>
-    {status === 'paid_review' && <div className="referral-review"><strong>Payment needs review.</strong> The activation or its package changed after payment was recorded. The paid amount is preserved.
-      {comparison ? <p>Recalculated reward: <strong>{formatRand(comparison.currentRewardCents)}</strong> · Recorded as paid: <strong>{formatRand(comparison.paidCents)}</strong>. {comparison.differenceCents > 0 ? `Possible shortfall: ${formatRand(comparison.differenceCents)}.` : comparison.differenceCents < 0 ? `Possible overpayment: ${formatRand(-comparison.differenceCents)}.` : 'The reward amount is unchanged.'}</p> : <p>The recorded activation is missing, has changed, or has no valid price, so a reward cannot be compared.</p>}
-      <p>Review payment history before taking action. Any difference is excluded from ready-to-pay totals; additional payments or refunds cannot be recorded here. Only correct a paid mark if it was entered in error.</p>
-    </div>}
+    {status === 'paid_review' && <div className="referral-review"><strong>Needs review.</strong>{comparison
+      ? <span> Recalculated {formatRand(comparison.currentRewardCents)} · paid {formatRand(comparison.paidCents)}{comparison.differenceCents > 0 ? ` · shortfall ${formatRand(comparison.differenceCents)}` : comparison.differenceCents < 0 ? ` · overpaid ${formatRand(-comparison.differenceCents)}` : ' · unchanged'}.</span>
+      : <span> No comparable price on the activation.</span>}</div>}
     <div className="referral-row-bottom">
-      <p>{explanation}</p>
       <div className="referral-row-actions">
         {status === 'needs_link' && <button className="text-action" onClick={() => onEdit(referral)}><Link2 size={13} /> LINK ACCOUNT</button>}
         {status === 'not_in_list' && <button className="text-action" onClick={() => onAddToLeads(referral)}><Plus size={13} /> ADD TO LEADS</button>}
@@ -156,29 +144,24 @@ export function ReferralsView({ workspace, now, onAdd, onEdit, onRemove, onAddTo
   const visible = filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize)
 
   return <>
-    <div className="page-heading view-heading referral-heading"><div><div className="eyebrow referral-eyebrow"><span className="eyebrow-line" /> YOUR NETWORK</div><h1>Referrals</h1><p>From a good introduction to a well-earned thank you.</p></div><button className="button button-primary" onClick={onAdd}><Plus size={16} /> ADD REFERRAL</button></div>
-
-    <section className="referral-policy" aria-label="Referral reward rules">
-      <div className="referral-policy-intro"><div className="referral-policy-icon"><Gift size={19} /></div><div><span className="referral-kicker">THE REWARD / PER ACTIVATION</span><h2>Good leads. Real rewards.</h2><p>Earned only when the referred customer completes the pipeline and activates. Record payments here after sending them yourself.</p></div></div>
-      <div className="referral-tiers"><div><span>PACKAGE R200 OR LESS</span><strong>R20</strong><small>per activation</small></div><div><span>PACKAGE OVER R200</span><strong>R30</strong><small>per activation</small></div></div>
-    </section>
+    <div className="page-heading view-heading referral-heading"><div><div className="eyebrow referral-eyebrow"><span className="eyebrow-line" /> YOUR NETWORK</div><h1>Referrals</h1></div><button className="button button-primary" onClick={onAdd}><Plus size={16} /> ADD REFERRAL</button></div>
 
     <section className="referral-metrics" aria-label="Referral summary">
-      <div className="referral-metric metric-due"><span>READY TO PAY</span><strong>{formatRand(dueCents)}</strong><small>{ready.length} activated {ready.length === 1 ? 'referral' : 'referrals'}</small><Wallet size={17} /></div>
-      <div className="referral-metric"><span>IN PROGRESS</span><strong>{String(inProgress.length).padStart(2, '0')}</strong><small>not yet payable</small><UsersRound size={17} /></div>
-      <div className="referral-metric"><span>NEEDS ATTENTION</span><strong>{String(attention.length).padStart(2, '0')}</strong><small>details or review needed</small><Link2 size={17} /></div>
-      <div className="referral-metric"><span>PAID TO DATE</span><strong>{formatRand(paidCents)}</strong><small>{paid.length} {paid.length === 1 ? 'payment' : 'payments'} recorded</small><Check size={17} /></div>
+      <div className="referral-metric metric-due"><span>READY TO PAY</span><strong>{formatRand(dueCents)}</strong><small>{ready.length} ready</small><Wallet size={17} /></div>
+      <div className="referral-metric"><span>IN PROGRESS</span><strong>{String(inProgress.length).padStart(2, '0')}</strong><small /><UsersRound size={17} /></div>
+      <div className="referral-metric"><span>NEEDS ATTENTION</span><strong>{String(attention.length).padStart(2, '0')}</strong><small /><Link2 size={17} /></div>
+      <div className="referral-metric"><span>PAID TO DATE</span><strong>{formatRand(paidCents)}</strong><small>{paid.length} paid</small><Check size={17} /></div>
     </section>
 
     <section className="referral-section" aria-labelledby="referral-tracker-heading">
-      <div className="referral-section-heading"><div><span className="referral-kicker">01 / REFERRAL TRACKER</span><h2 id="referral-tracker-heading">Referred customers <span>{String(states.length).padStart(2, '0')}</span></h2><p>Follow each introduction through the pipeline.</p>{selectedReferrer && <button className="referrer-scope" onClick={() => { setReferrerId(null); setPage(0) }}>SHOWING {selectedReferrer.name.toUpperCase()} <X size={12} /> <span className="sr-only">Clear referrer filter</span></button>}</div><div className="referral-controls"><label className="search-field"><Search size={16} /><span className="sr-only">Search referrals</span><input value={query} onChange={event => { setQuery(event.target.value); setPage(0) }} placeholder="Search referrals" /></label><label className="period-field"><span className="sr-only">Filter referrals</span><select value={filter} onChange={event => { setFilter(event.target.value as Filter); setPage(0) }}><option value="all">ALL STATUSES</option><option value="progress">IN PROGRESS</option><option value="ready">READY TO PAY</option><option value="attention">NEEDS ATTENTION</option><option value="paid">PAID</option><option value="declined">DECLINED</option></select></label></div></div>
-      {!states.length ? <div className="table-empty referral-empty"><EmptyState title="Your first referral starts here." action={<button className="button button-primary" onClick={onAdd}>ADD REFERRAL <ArrowRight size={15} /></button>}>Add the person who referred them and the customer. You can link their account now or later.</EmptyState></div> : !filtered.length ? <div className="table-empty referral-empty"><EmptyState title="No matching referrals.">Try a different search or status.</EmptyState></div> : <div className="referral-list">{visible.map(state => <ReferralRow key={state.referral.id} state={state} onEdit={onEdit} onRemove={onRemove} onAddToLeads={onAddToLeads} onVerify={onVerify} onCall={onCall} onEditSale={onEditSale} onPay={onPay} onHistory={onHistory} onOpenCustomer={onOpenCustomer} />)}</div>}
-      <div className="referral-list-foot"><span>SHOWING {filtered.length ? `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, filtered.length)}` : '0'} OF {filtered.length} REFERRALS</span>{pageCount > 1 ? <div className="pagination"><button onClick={() => setPage(currentPage - 1)} disabled={currentPage === 0} aria-label="Previous referrals page">PREV</button><span>{currentPage + 1} / {pageCount}</span><button onClick={() => setPage(currentPage + 1)} disabled={currentPage === pageCount - 1} aria-label="Next referrals page">NEXT</button></div> : <span>ONE REFERRAL PER CUSTOMER ACCOUNT</span>}</div>
+      <div className="referral-section-heading"><div><h2 id="referral-tracker-heading">Referred customers <span>{String(states.length).padStart(2, '0')}</span></h2>{selectedReferrer && <button className="referrer-scope" onClick={() => { setReferrerId(null); setPage(0) }}>SHOWING {selectedReferrer.name.toUpperCase()} <X size={12} /> <span className="sr-only">Clear referrer filter</span></button>}</div><div className="referral-controls"><label className="search-field"><Search size={16} /><span className="sr-only">Search referrals</span><input value={query} onChange={event => { setQuery(event.target.value); setPage(0) }} placeholder="Search referrals" /></label><label className="period-field"><span className="sr-only">Filter referrals</span><select value={filter} onChange={event => { setFilter(event.target.value as Filter); setPage(0) }}><option value="all">ALL STATUSES</option><option value="progress">IN PROGRESS</option><option value="ready">READY TO PAY</option><option value="attention">NEEDS ATTENTION</option><option value="paid">PAID</option><option value="declined">DECLINED</option></select></label></div></div>
+      {!states.length ? <div className="table-empty referral-empty"><EmptyState title="No referrals yet." action={<button className="button button-primary" onClick={onAdd}>ADD REFERRAL <ArrowRight size={15} /></button>}>Add who referred the customer, and optionally their account number.</EmptyState></div> : !filtered.length ? <div className="table-empty referral-empty"><EmptyState title="No matching referrals.">Try a different search or status.</EmptyState></div> : <div className="referral-list">{visible.map(state => <ReferralRow key={state.referral.id} state={state} onEdit={onEdit} onRemove={onRemove} onAddToLeads={onAddToLeads} onVerify={onVerify} onCall={onCall} onEditSale={onEditSale} onPay={onPay} onHistory={onHistory} onOpenCustomer={onOpenCustomer} />)}</div>}
+      <div className="referral-list-foot"><span>SHOWING {filtered.length ? `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, filtered.length)}` : '0'} OF {filtered.length} REFERRALS</span>{pageCount > 1 ? <div className="pagination"><button onClick={() => setPage(currentPage - 1)} disabled={currentPage === 0} aria-label="Previous referrals page">PREV</button><span>{currentPage + 1} / {pageCount}</span><button onClick={() => setPage(currentPage + 1)} disabled={currentPage === pageCount - 1} aria-label="Next referrals page">NEXT</button></div> : <span />}</div>
     </section>
 
     <section className="referral-section referral-people-section" aria-labelledby="referrers-heading">
       <div className="referral-section-heading">
-        <div><span className="referral-kicker">02 / YOUR REFERRERS</span><h2 id="referrers-heading">People to thank <span>{String(workspace.referrers.length).padStart(2, '0')}</span></h2><p>Every person who introduces customers, with what each one is owed and has earned.</p></div>
+        <div><h2 id="referrers-heading">Referrers <span>{String(workspace.referrers.length).padStart(2, '0')}</span></h2></div>
         <button className="button button-outline button-small" onClick={onAddReferrer}><Plus size={14} /> ADD REFERRER</button>
       </div>
       {!!workspace.referrers.length && <div className="referrer-controls">
@@ -209,6 +192,5 @@ export function ReferralsView({ workspace, now, onAdd, onEdit, onRemove, onAddTo
         </article>
       })}</div> : <div className="referrer-empty">{referrerEmptyMessage(referrerFilter, referrerQuery)}</div>) : <div className="referrer-empty">No referrers yet. Add the person who introduced your first customer, or add them while capturing a referral.</div>}
     </section>
-    <p className="referral-privacy">PRIVATE TO THIS WORKSPACE · PAYMENTS ARE RECORDED, NOT SENT</p>
   </>
 }

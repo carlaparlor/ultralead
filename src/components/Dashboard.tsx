@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react'
 import { ArrowRight, CalendarClock, Check, CheckCheck, ClipboardPaste, Copy, Headphones, Layers3, ListFilter, RefreshCw, UsersRound } from 'lucide-react'
 import { formatDate, formatListDate, relativeDue } from '../domain/dates'
-import { formatRand } from '../domain/money'
 import { monthlyPerformance } from '../domain/monthly'
 import { createQueueIndex, readiness, type QueueItem } from '../domain/queue'
 import type { Callback, Lead, View, Workspace } from '../domain/types'
@@ -44,10 +43,7 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
   const activeSales = workspace.sales.filter(sale => sale.stage === 'credit_vetting' || sale.stage === 'pending_confirmation')
   const vetting = activeSales.filter(sale => sale.stage === 'credit_vetting').length
   const confirmation = activeSales.filter(sale => sale.stage === 'pending_confirmation').length
-  // Monthly performance is the reporting unit, so the desk shows the month rather than an all-time total.
   const month = useMemo(() => monthlyPerformance(workspace, now, 6), [workspace, now])
-  const activations = workspace.sales.filter(sale => sale.stage === 'activated')
-  const att = activations.filter(sale => sale.activationType === 'ATT').length
   const due = workspace.callbacks.filter(item => new Date(item.dueAt).getTime() <= now.getTime()).length
   const dueInQueue = queue.filter(item => item.callback).length
   const retries = queue.filter(item => item.attemptsToday > 0 && !item.callback).length
@@ -75,20 +71,6 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
     </div>
 
     <QuickPaste mode={importMode} onMode={onImportMode} onImport={onQuickImport} onOpen={onImport} />
-
-    <section className="month-strip" aria-label="Monthly performance">
-      <div className="month-strip-lead">
-        <span className="month-strip-kicker">MONTH TO DATE</span>
-        <strong>{month.current.label}</strong>
-        <button className="text-action" onClick={() => onNavigate('insights')}>MONTHLY PERFORMANCE <ArrowRight size={12} /></button>
-      </div>
-      <div className="month-strip-figures">
-        <button onClick={() => onNavigate('activations')}><span>ACTIVATED</span><strong>{formatCount(month.current.pipeline.activated)}</strong><small>{month.current.pipeline.att} ATT · {month.current.pipeline.nonAtt} non-ATT</small></button>
-        <button onClick={() => onNavigate('insights')}><span>VALUE</span><strong>{month.current.pipeline.activatedValueCents ? formatRand(month.current.pipeline.activatedValueCents) : '—'}</strong><small>{month.current.pipeline.activatedWithoutPrice ? `${month.current.pipeline.activatedWithoutPrice} to price` : 'priced activations'}</small></button>
-        <button onClick={() => onNavigate('insights')}><span>VS LAST MONTH</span><strong className={`strip-trend ${month.current.pipeline.activated > month.previous.pipeline.activated ? 'is-up' : month.current.pipeline.activated < month.previous.pipeline.activated ? 'is-down' : ''}`}>{month.previous.pipeline.activated === 0 ? (month.current.pipeline.activated ? 'FIRST' : '—') : `${month.current.pipeline.activated >= month.previous.pipeline.activated ? '+' : ''}${month.current.pipeline.activated - month.previous.pipeline.activated}`}</strong><small>{month.previous.pipeline.activated} last month</small></button>
-        <button onClick={() => onNavigate('insights')}><span>DAYS LEFT</span><strong>{formatCount(month.daysLeft)}</strong><small>{month.projectedActivations !== null ? `on pace for ${Math.round(month.projectedActivations)}` : 'log calls to project'}</small></button>
-      </div>
-    </section>
 
     <div className="dashboard-columns">
       <section className="calling-section" aria-labelledby="calling-heading">
@@ -133,7 +115,6 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
               <div className="line-confirm"><span><i /> Awaiting confirmation</span><strong>{formatCount(confirmation)}</strong></div>
               <div className="line-live"><span><i /> Activated this month</span><strong>{formatCount(month.current.pipeline.activated)}</strong></div>
             </div>
-            <p className="rail-note">{month.current.pipeline.att} ATT · {month.current.pipeline.nonAtt} non-ATT · {att} ATT of {activations.length} all time.</p>
             <button className="panel-link" onClick={() => onNavigate('pipeline')}>SALES PIPELINE <ArrowRight size={14} /></button>
           </>}
           {rail === 'activity' && <>
