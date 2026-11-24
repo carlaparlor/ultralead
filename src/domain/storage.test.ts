@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createDemoWorkspace } from './demo'
-import { createLocalWorkspaceRepository, isWorkspace, LEGACY_STORAGE_KEY, loadWorkspace, parseBackup, STORAGE_KEY } from './storage'
+import { createLocalWorkspaceRepository, isWorkspace, LEGACY_STORAGE_KEY, loadWorkspace, parseBackup, STORAGE_KEY, V2_STORAGE_KEY } from './storage'
 import { makeLead, NOW, workspaceWith } from './testFixtures'
 
 describe('storage and backups', () => {
@@ -29,7 +29,7 @@ describe('storage and backups', () => {
     const { referrals: _referrals, referrers: _referrers, ...core } = current
     const legacy = { ...core, version: 1, sales: current.sales.map(({ packagePriceCents: _price, ...sale }) => sale) }
     const restored = parseBackup(JSON.stringify(legacy))!
-    expect(restored.version).toBe(2)
+    expect(restored.version).toBe(4)
     expect(restored.sales).toHaveLength(legacy.sales.length)
     expect(restored.sales.every(sale => sale.packagePriceCents === null)).toBe(true)
     expect(restored.referrals).toEqual([])
@@ -40,12 +40,49 @@ describe('storage and backups', () => {
     expect(loaded.warning).toBeNull()
     expect(loaded.workspace.sales[0].packagePriceCents).toBeNull()
     repository.save(loaded.workspace)
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).version).toBe(2)
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).version).toBe(4)
     expect(localStorage.getItem(LEGACY_STORAGE_KEY)).toBeNull()
     // A stale older tab can change its old key without overwriting the upgraded workspace.
     localStorage.setItem(LEGACY_STORAGE_KEY, JSON.stringify({ ...legacy, leads: [] }))
     expect(loadWorkspace(localStorage, NOW).workspace.leads).toEqual(loaded.workspace.leads)
     expect(parseBackup(JSON.stringify({ ...legacy, leads: [legacy.leads[0], legacy.leads[0]] }))).toBeNull()
+  })
+  it('migrates version-2 referrers to notes and an archive state without inventing either', () => {
+    const current = createDemoWorkspace(NOW)
+    const older = {
+      ...current, version: 2,
+      settings: { ...current.settings },
+      referrers: current.referrers.map(({ notes: _notes, archivedAt: _archivedAt, updatedAt: _updatedAt, ...referrer }) => referrer),
+    }
+    expect(isWorkspace(older)).toBe(false)
+    const restored = parseBackup(JSON.stringify(older))!
+    expect(restored.version).toBe(4)
+    expect(restored.referrers).toHaveLength(current.referrers.length)
+    expect(restored.referrers.every(referrer => referrer.notes === '' && referrer.archivedAt === null)).toBe(true)
+    expect(restored.referrers[0]).toMatchObject({ id: current.referrers[0].id, name: current.referrers[0].name, contact: current.referrers[0].contact })
+    expect(restored.referrals).toEqual(current.referrals)
+    expect(restored.settings.monthlyActivationTarget).toBeNull()
+    localStorage.setItem(V2_STORAGE_KEY, JSON.stringify(older))
+    const repository = createLocalWorkspaceRepository(localStorage)
+    const loaded = repository.load(NOW)
+    expect(loaded.migratedFromLegacy).toBe(true)
+    repository.save(loaded.workspace)
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).version).toBe(4)
+    // Older copies are removed only after the current one saved, so a stale tab cannot win later.
+    expect(localStorage.getItem(V2_STORAGE_KEY)).toBeNull()
+    expect(localStorage.getItem(LEGACY_STORAGE_KEY)).toBeNull()
+  })
+  it('validates referrer notes, archive timestamps and update times in backups', () => {
+    const ws = createDemoWorkspace(NOW)
+    const referrer = ws.referrers[0]
+    // Only the first person changes, so every referral keeps a valid referrer link.
+    const withReferrer = (change: Record<string, unknown>) => ({ ...ws, referrers: [{ ...referrer, ...change }, ...ws.referrers.slice(1)] })
+    expect(isWorkspace(withReferrer({ notes: 'x'.repeat(601) }))).toBe(false)
+    expect(isWorkspace(withReferrer({ archivedAt: 'not-a-date' }))).toBe(false)
+    expect(isWorkspace(withReferrer({ updatedAt: null }))).toBe(false)
+    expect(isWorkspace(withReferrer({ name: '   ' }))).toBe(false)
+    expect(isWorkspace(withReferrer({ notes: 'Keeps a note', archivedAt: NOW.toISOString() }))).toBe(true)
+    expect(parseBackup(JSON.stringify(ws))).toEqual(ws)
   })
   it('does not remove the old workspace if saving the migrated copy fails', () => {
     const current = workspaceWith(makeLead('5-22'))

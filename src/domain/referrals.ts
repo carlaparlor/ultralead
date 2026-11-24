@@ -6,6 +6,9 @@ import { makeId, type Lead, type Referral, type ReferralPayment, type Referrer, 
 export type ReferralStatus = 'needs_link' | 'not_in_list' | 'age_review' | 'excluded' | 'not_interested' | 'sale_missing'
   | 'awaiting_sale' | 'credit_vetting' | 'pending_confirmation' | 'declined' | 'needs_price' | 'ready' | 'paid' | 'paid_review'
 
+/** Statuses that need a human decision or missing detail. Shared by the tracker and referrer totals. */
+export const referralAttentionStatuses: ReferralStatus[] = ['needs_link', 'not_in_list', 'age_review', 'excluded', 'sale_missing', 'needs_price', 'paid_review']
+
 export interface ReferralState {
   referral: Referral
   referrer: Referrer
@@ -111,18 +114,57 @@ export interface ReferralDetails {
   accountNumber: string | null
 }
 
-const validName = (value: string) => !!value.trim() && value.trim().length <= 120
-const validContact = (value: string) => value.trim().length <= 160
+export const REFERRER_NAME_LIMIT = 120
+export const REFERRER_CONTACT_LIMIT = 160
+export const REFERRER_NOTES_LIMIT = 600
 
-export function addReferrer(workspace: Workspace, name: string, contact: string, now: Date): Workspace {
-  if (!validName(name) || !validContact(contact)) return workspace
-  const referrer: Referrer = { id: makeId(), name: name.trim(), contact: contact.trim(), createdAt: now.toISOString() }
+const validName = (value: string) => !!value.trim() && value.trim().length <= REFERRER_NAME_LIMIT
+const validContact = (value: string) => value.trim().length <= REFERRER_CONTACT_LIMIT
+const validNotes = (value: string) => value.trim().length <= REFERRER_NOTES_LIMIT
+
+/** Names are compared loosely so "Nandi Molefe" and "nandi  molefe" count as the same person. */
+export function normalizedReferrerName(name: string): string {
+  return name.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+/** A likely duplicate is reported rather than silently merged, because two people can share a name. */
+export function referrerNameMatch(workspace: Workspace, name: string, exceptId?: string): Referrer | undefined {
+  const normalized = normalizedReferrerName(name)
+  if (!normalized) return undefined
+  return workspace.referrers.find(referrer => referrer.id !== exceptId && normalizedReferrerName(referrer.name) === normalized)
+}
+
+export function addReferrer(workspace: Workspace, name: string, contact: string, now: Date, notes = ''): Workspace {
+  if (!validName(name) || !validContact(contact) || !validNotes(notes)) return workspace
+  const at = now.toISOString()
+  const referrer: Referrer = {
+    id: makeId(), name: name.trim(), contact: contact.trim(), notes: notes.trim(),
+    archivedAt: null, createdAt: at, updatedAt: at,
+  }
   return { ...workspace, referrers: [...workspace.referrers, referrer] }
 }
 
-export function editReferrer(workspace: Workspace, id: string, name: string, contact: string): Workspace {
-  if (!validName(name) || !validContact(contact) || !workspace.referrers.some(referrer => referrer.id === id)) return workspace
-  return { ...workspace, referrers: workspace.referrers.map(referrer => referrer.id === id ? { ...referrer, name: name.trim(), contact: contact.trim() } : referrer) }
+export function editReferrer(workspace: Workspace, id: string, name: string, contact: string, notes = '', now = new Date()): Workspace {
+  const existing = workspace.referrers.find(referrer => referrer.id === id)
+  if (!existing || !validName(name) || !validContact(contact) || !validNotes(notes)) return workspace
+  return {
+    ...workspace,
+    referrers: workspace.referrers.map(referrer => referrer.id === id ? {
+      ...referrer, name: name.trim(), contact: contact.trim(), notes: notes.trim(), updatedAt: now.toISOString(),
+    } : referrer),
+  }
+}
+
+/** Archiving keeps every referral and payment intact; it only stops the person being chosen again. */
+export function setReferrerArchived(workspace: Workspace, id: string, archived: boolean, now: Date): Workspace {
+  const existing = workspace.referrers.find(referrer => referrer.id === id)
+  if (!existing || (existing.archivedAt !== null) === archived) return workspace
+  return {
+    ...workspace,
+    referrers: workspace.referrers.map(referrer => referrer.id === id ? {
+      ...referrer, archivedAt: archived ? now.toISOString() : null, updatedAt: now.toISOString(),
+    } : referrer),
+  }
 }
 
 export function removeReferrer(workspace: Workspace, id: string): Workspace {
@@ -130,10 +172,50 @@ export function removeReferrer(workspace: Workspace, id: string): Workspace {
   return { ...workspace, referrers: workspace.referrers.filter(referrer => referrer.id !== id) }
 }
 
+export interface ReferrerTotals {
+  referralCount: number
+  /** Referrals still somewhere in the pipeline, excluding paid, declined and attention-only records. */
+  activeCount: number
+  readyCount: number
+  attentionCount: number
+  dueCents: number
+  paidCents: number
+  lastReferralAt: string | null
+  lastPaymentAt: string | null
+}
+
+/** One pass over derived referral states, so the referrer list does not rescan sales per person. */
+export function summariseReferrers(workspace: Workspace, states: ReferralState[]): Map<string, ReferrerTotals> {
+  const totals = new Map<string, ReferrerTotals>()
+  for (const referrer of workspace.referrers) {
+    totals.set(referrer.id, {
+      referralCount: 0, activeCount: 0, readyCount: 0, attentionCount: 0,
+      dueCents: 0, paidCents: 0, lastReferralAt: null, lastPaymentAt: null,
+    })
+  }
+  for (const state of states) {
+    const total = totals.get(state.referrer.id)
+    if (!total) continue
+    total.referralCount++
+    total.dueCents += state.dueCents
+    total.paidCents += state.payment?.amountCents ?? 0
+    if (state.status === 'ready') total.readyCount++
+    if (referralAttentionStatuses.includes(state.status)) total.attentionCount++
+    if (!['paid', 'paid_review', 'declined', 'not_interested'].includes(state.status)) total.activeCount++
+    if (!total.lastReferralAt || state.referral.createdAt > total.lastReferralAt) total.lastReferralAt = state.referral.createdAt
+    const paidAt = state.payment?.paidAt
+    if (paidAt && (!total.lastPaymentAt || paidAt > total.lastPaymentAt)) total.lastPaymentAt = paidAt
+  }
+  return totals
+}
+
 /** One attributed referral per account. Name-only referrals can be linked later. */
 export function saveReferral(workspace: Workspace, details: ReferralDetails, now: Date, id?: string): Workspace {
   const previous = id ? workspace.referrals.find(referral => referral.id === id) : undefined
   const accountNumber = details.accountNumber?.trim().toUpperCase() || null
+  const referrer = workspace.referrers.find(item => item.id === details.referrerId)
+  // An archived person keeps the referrals they already made but cannot be chosen for new ones.
+  if (!referrer || (referrer.archivedAt !== null && previous?.referrerId !== referrer.id)) return workspace
   if ((id && !previous) || !workspace.referrers.some(referrer => referrer.id === details.referrerId)
     || !validName(details.customerName) || !validContact(details.customerContact)
     || (accountNumber !== null && !/^5-\d+$/.test(accountNumber))

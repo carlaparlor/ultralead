@@ -5,11 +5,11 @@ import { Sidebar } from './components/Sidebar'
 import { LeadsView } from './components/LeadsView'
 import { CallbacksView } from './components/CallbacksView'
 import { PipelineView } from './components/PipelineView'
-import { ActivationsView } from './components/ActivationsView'
+import { ActivationLog, ActivationsView } from './components/ActivationsView'
 import { SettingsView } from './components/SettingsView'
 import { InsightsView } from './components/InsightsView'
 import { ReferralsView } from './components/ReferralsView'
-import { PaymentHistoryModal, ReferralModal, ReferrerModal, type ReferralFormValues } from './components/ReferralModals'
+import { PaymentHistoryModal, ReferralModal, ReferrerModal, type ReferralFormValues, type ReferrerFormValues } from './components/ReferralModals'
 import { ImportModal } from './components/ImportModal'
 import { CustomerModal } from './components/CustomerModal'
 import { ActivationModal, CallbackModal, HelpModal, SaleModal } from './components/OutcomeModals'
@@ -18,9 +18,11 @@ import { copyText } from './domain/clipboard'
 import { localDayKey } from './domain/dates'
 import { parseLeads, type ImportPreview } from './domain/import'
 import { formatRand } from './domain/money'
-import { activePayment, addReferralToLeads, addReferrer, editReferrer, markReferralPaid, removeReferral, removeReferrer, saveReferral, voidReferralPayment, type ReferralState } from './domain/referrals'
+import { activePayment, addReferralToLeads, addReferrer, editReferrer, markReferralPaid, removeReferral, removeReferrer, saveReferral, setReferrerArchived, voidReferralPayment, type ReferralState } from './domain/referrals'
 import { findLead, getSmartQueue, readiness } from './domain/queue'
+import { groupActivationsByMonth } from './domain/monthly'
 import { parseBackup } from './domain/storage'
+import { createDemoWorkspace } from './domain/demo'
 import { applyImport, clearCategory, createEmptyWorkspace, editSale, findCustomerLead, pruneExcluded, recordNoAnswer, recordNotInterested, recordSale, removeCallback, removeLead, removeSale, resetToQueue, saveCallback, saveNotes, updateSaleStage, verifyAge } from './domain/workspace'
 import type { Callback, ClearCategory, Lead, Referral, Referrer, Sale, SaleStage, View, Workspace } from './domain/types'
 import { useWorkspace } from './hooks/useWorkspace'
@@ -31,8 +33,9 @@ type ModalState =
   | { type: 'sale'; lead: Lead; sale?: Sale }
   | { type: 'activation'; sale: Sale }
   | { type: 'referral'; referral?: Referral }
-  | { type: 'referrer'; referrer: Referrer }
+  | { type: 'referrer'; referrer?: Referrer }
   | { type: 'referral-history'; referralId: string }
+  | { type: 'activations'; monthKey?: string }
   | { type: 'customer'; account: string }
   | { type: 'help' }
   | { type: 'confirm'; title: string; description: string; confirmLabel: string; action: () => void; danger?: boolean }
@@ -234,6 +237,7 @@ export default function App() {
     applyStage(sale, stage, stage === 'pending_confirmation' ? 'Moved to awaiting confirmation.' : 'Moved to credit vetting.')
   }
   const onClear = (category: ClearCategory) => setModal({ type: 'confirm', ...clearDescriptions[category], confirmLabel: 'CLEAR THIS CATEGORY', danger: true, action: () => { setUndoImport(null); setWorkspace(previous => clearCategory(previous, category)); setSelection(null); notify('Selected category cleared.') } })
+  const restoreDemo = () => setModal({ type: 'confirm', title: 'Load the sample workspace?', description: 'Everything currently in this workspace — leads, callbacks, sales, activations, referrals and notes — is replaced by the sample data. Export a backup first if you want to keep it.', confirmLabel: 'LOAD SAMPLE DATA', danger: true, action: () => { const latest = workspaceRef.current; const demo = createDemoWorkspace(); demo.settings = latest.settings; setUndoImport(null); setWorkspace(demo); setSelection(null); setModal(null); setView('overview'); notify('Sample workspace loaded.') } })
   const startFresh = () => setModal({ type: 'confirm', title: 'Start with a clean workspace?', description: 'This clears the sample leads, callbacks, sales, activations, referrals and notes. You can then import your own list.', confirmLabel: 'CLEAR SAMPLE DATA', danger: true, action: () => { const latest = workspaceRef.current; if (!latest.isDemo) { notify('Sample data is no longer active; nothing was cleared.'); return } const clean = createEmptyWorkspace(); clean.settings = latest.settings; setUndoImport(null); setWorkspace(clean); setSelection(null); setView('overview'); notify('Your workspace is ready for your leads.') } })
   const onExport = () => {
     const blob = new Blob([JSON.stringify(workspace, null, 2)], { type: 'application/json' })
@@ -308,6 +312,36 @@ export default function App() {
       notify(saved ? 'Payment recorded. No money was sent by the app.' : 'Payment marked paid in this session only. Export a backup before leaving.')
     } })
   }
+  const onSaveReferrer = (values: ReferrerFormValues, existing?: Referrer) => {
+    const current = workspaceRef.current
+    const at = new Date()
+    if (existing) {
+      const latest = current.referrers.find(item => item.id === existing.id)
+      if (!latest || latest.updatedAt !== existing.updatedAt) { setModal(null); notify('Referrer changed in another tab. Open it again to review.'); return }
+      const next = editReferrer(current, existing.id, values.name, values.contact, values.notes, at)
+      if (next === current) { notify('Referrer could not be updated. Check the name and note lengths.'); return }
+      setUndoImport(null); setWorkspace(next); setModal(null); notify('Referrer updated.')
+      return
+    }
+    const next = addReferrer(current, values.name, values.contact, at, values.notes)
+    if (next === current) { notify('Referrer could not be added. Check the name and note lengths.'); return }
+    setUndoImport(null); setWorkspace(next); setModal(null); notify(`${values.name.trim()} added to your referrers.`)
+  }
+  const onArchiveReferrer = (referrer: Referrer, archived: boolean) => {
+    const apply = () => {
+      const current = workspaceRef.current
+      const latest = current.referrers.find(item => item.id === referrer.id)
+      if (!latest || (latest.archivedAt !== null) === archived) { notify('The referrer may have changed in another tab. Review the list and try again.'); return }
+      const next = setReferrerArchived(current, referrer.id, archived, new Date())
+      if (next === current) { notify('The referrer could not be updated.'); return }
+      setUndoImport(null); setWorkspace(next)
+      notify(archived ? `${referrer.name} archived. Existing referrals and payments stay.` : `${referrer.name} is active again.`)
+    }
+    if (!archived) { apply(); return }
+    setModal({
+      type: 'confirm', title: 'Archive this referrer?', description: `Stop choosing ${referrer.name} for new referrals. Their existing referrals, totals and payment history are kept, and you can restore them at any time.`, confirmLabel: 'ARCHIVE REFERRER', action: apply,
+    })
+  }
   const onRemoveReferrer = (referrer: Referrer) => setModal({ type: 'confirm', title: 'Delete this referrer?', description: `Remove ${referrer.name} from your referrer list. A person with referrals cannot be deleted.`, confirmLabel: 'DELETE REFERRER', danger: true, action: () => {
     const current = workspaceRef.current; const next = removeReferrer(current, referrer.id)
     if (next === current) { notify('Referrer could not be deleted; they may still have referrals.'); return }
@@ -328,9 +362,9 @@ export default function App() {
         {view === 'callbacks' && <CallbacksView workspace={workspace} now={now} onOpenCustomer={openCustomer} onCall={onCall} onVerify={onVerify} onEdit={item => setModal({ type: 'callback', lead: findLead(workspace, item.lead.accountNumber) ?? item.lead, existing: item, recordCall: false })} onRemove={onRemoveCallback} />}
         {view === 'pipeline' && <PipelineView workspace={workspace} onStage={onStage} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onRemove={onRemoveSale} onOpenCustomer={openCustomer} />}
         {view === 'activations' && <ActivationsView workspace={workspace} now={now} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onUndo={sale => setModal({ type: 'confirm', title: 'Move back to confirmation?', description: `${sale.lead.name}'s sale will no longer count as an activation until it is completed again.${referralImpact(sale)}`, confirmLabel: 'MOVE BACK', action: () => applyStage(sale, 'pending_confirmation', 'Moved back to confirmation.') })} onRemove={onRemoveSale} onOpenCustomer={openCustomer} />}
-        {view === 'referrals' && <ReferralsView workspace={workspace} now={now} onAdd={onAddReferral} onEdit={referral => setModal({ type: 'referral', referral })} onRemove={onRemoveReferral} onAddToLeads={onAddReferralToLeads} onVerify={onVerify} onCall={onCall} onEditSale={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onPay={onPayReferral} onHistory={referral => setModal({ type: 'referral-history', referralId: referral.id })} onEditReferrer={referrer => setModal({ type: 'referrer', referrer })} onRemoveReferrer={onRemoveReferrer} onOpenCustomer={openCustomer} />}
-        {view === 'insights' && <InsightsView workspace={workspace} now={now} />}
-        {view === 'settings' && <SettingsView workspace={workspace} onAutoCopy={onAutoCopy} onAddPackage={name => { const trimmed = name.trim(); if (trimmed) setWorkspace(previous => previous.packages.some(item => item.toLowerCase() === trimmed.toLowerCase()) ? previous : { ...previous, packages: [...previous.packages, trimmed] }) }} onRemovePackage={name => setWorkspace(previous => ({ ...previous, packages: previous.packages.filter(item => item !== name) }))} onClear={onClear} onExport={onExport} onRestore={file => { void onRestore(file) }} />}
+        {view === 'referrals' && <ReferralsView workspace={workspace} now={now} onAdd={onAddReferral} onEdit={referral => setModal({ type: 'referral', referral })} onRemove={onRemoveReferral} onAddToLeads={onAddReferralToLeads} onVerify={onVerify} onCall={onCall} onEditSale={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onPay={onPayReferral} onHistory={referral => setModal({ type: 'referral-history', referralId: referral.id })} onAddReferrer={() => setModal({ type: 'referrer' })} onEditReferrer={referrer => setModal({ type: 'referrer', referrer })} onArchiveReferrer={onArchiveReferrer} onRemoveReferrer={onRemoveReferrer} onOpenCustomer={openCustomer} />}
+        {view === 'insights' && <InsightsView workspace={workspace} now={now} onNavigate={setView} onOpenCustomer={openCustomer} onOpenActivations={monthKey => setModal({ type: 'activations', monthKey })} />}
+        {view === 'settings' && <SettingsView workspace={workspace} onAutoCopy={onAutoCopy} onTarget={value => setWorkspace(previous => ({ ...previous, settings: { ...previous.settings, monthlyActivationTarget: value } }))} onAddPackage={name => { const trimmed = name.trim(); if (trimmed) setWorkspace(previous => previous.packages.some(item => item.toLowerCase() === trimmed.toLowerCase()) ? previous : { ...previous, packages: [...previous.packages, trimmed] }) }} onRemovePackage={name => setWorkspace(previous => ({ ...previous, packages: previous.packages.filter(item => item !== name) }))} onClear={onClear} onExport={onExport} onRestore={file => { void onRestore(file) }} onRestoreDemo={restoreDemo} />}
       </main>
     </div>
     </div>
@@ -358,14 +392,7 @@ export default function App() {
       applyStage(modal.sale, 'activated', `Activation completed as ${type === 'ATT' ? 'ATT' : 'non-ATT'}.`, type, priceCents); setModal(null)
     }} />}
     {modal?.type === 'referral' && <ReferralModal key={modal.referral?.id ?? 'new'} workspace={workspace} referral={modal.referral} onClose={() => setModal(null)} onSave={values => onSaveReferral(values, modal.referral)} />}
-    {modal?.type === 'referrer' && <ReferrerModal key={modal.referrer.id} referrer={modal.referrer} onClose={() => setModal(null)} onSave={(name, contact) => {
-      const current = workspaceRef.current
-      const latest = current.referrers.find(item => item.id === modal.referrer.id)
-      if (!latest || latest.name !== modal.referrer.name || latest.contact !== modal.referrer.contact) { setModal(null); notify('Referrer changed in another tab. Open it again to review.'); return }
-      const next = editReferrer(current, modal.referrer.id, name, contact)
-      if (next === current) { notify('Referrer could not be updated.'); return }
-      setUndoImport(null); setWorkspace(next); setModal(null); notify('Referrer updated.')
-    }} />}
+    {modal?.type === 'referrer' && <ReferrerModal key={modal.referrer?.id ?? 'new'} workspace={workspace} referrer={modal.referrer} onClose={() => setModal(null)} onSave={values => onSaveReferrer(values, modal.referrer)} />}
     {modal?.type === 'referral-history' && (() => {
       const referral = workspace.referrals.find(item => item.id === modal.referralId)
       return referral ? <PaymentHistoryModal referral={referral} onClose={() => setModal(null)} onCorrect={payment => setModal({ type: 'confirm', title: 'Correct this paid mark?', description: `Only continue if the ${formatRand(payment.amountCents)} payment was marked paid by mistake. This does not reverse a real payment. If the activation still qualifies, it will appear as due again. The correction remains in payment history.`, confirmLabel: 'CORRECT PAID MARK', danger: true, action: () => {
@@ -379,6 +406,11 @@ export default function App() {
     {modal?.type === 'customer' && (() => {
       const customerLead = findCustomerLead(workspace, modal.account)
       return customerLead ? <CustomerModal workspace={workspace} lead={customerLead} account={modal.account} now={now} onCopy={account => copyAccount(account)} onNotes={notes => setWorkspace(previous => saveNotes(previous, modal.account, notes))} onClose={() => setModal(null)} /> : null
+    })()}
+    {modal?.type === 'activations' && (() => {
+      const months = groupActivationsByMonth(workspace, now)
+      const initial = modal.monthKey && months.some(group => group.key === modal.monthKey) ? modal.monthKey : months[0]?.key ?? null
+      return <Modal wide title="Activations by month." eyebrow="ACTIVATION LOG" onClose={() => setModal(null)}><div className="modal-body activation-modal-body"><ActivationLog workspace={workspace} now={now} initialKey={initial} onEdit={sale => setModal({ type: 'sale', lead: sale.lead, sale })} onUndo={sale => setModal({ type: 'confirm', title: 'Move back to confirmation?', description: `${sale.lead.name}'s sale will no longer count as an activation until it is completed again.${referralImpact(sale)}`, confirmLabel: 'MOVE BACK', action: () => applyStage(sale, 'pending_confirmation', 'Moved back to confirmation.') })} onRemove={sale => setModal({ type: 'confirm', title: 'Delete this activation?', description: `${sale.lead.name}'s activation will be removed. Referral and payment records stay, but an unpaid reward will no longer be due and a paid one will need review.`, confirmLabel: 'DELETE ACTIVATION', danger: true, action: () => { const current = workspaceRef.current; setWorkspace(removeSale(current, sale.id)); notify('Activation deleted.') } })} onOpenCustomer={account => setModal({ type: 'customer', account })} /><div className="modal-footer"><button className="button button-primary" onClick={() => setModal(null)}>DONE <ArrowRight size={15} /></button></div></div></Modal>
     })()}
     {modal?.type === 'help' && <HelpModal onClose={() => setModal(null)} />}
     {modal?.type === 'confirm' && <Modal title={modal.title} eyebrow="PLEASE CONFIRM" onClose={() => setModal(null)}><div className="modal-body"><p className="modal-intro confirm-description">{modal.description}</p><div className="modal-footer"><button className="button button-outline" onClick={() => setModal(null)}>CANCEL</button><button className={`button ${modal.danger ? 'button-danger' : 'button-primary'}`} onClick={() => { const action = modal.action; setModal(null); action() }}>{modal.confirmLabel} <ArrowRight size={15} /></button></div></div></Modal>}

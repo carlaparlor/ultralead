@@ -38,17 +38,33 @@ export function createDemoWorkspace(now = new Date()): Workspace {
     id, lead: customer, packageName, packagePriceCents, activationType, stage, createdAt: minutesAgo(minutes + 45),
     updatedAt: minutesAgo(minutes), activatedAt: stage === 'activated' ? minutesAgo(minutes) : null,
   })
+  // Activations are spread across the last few months so the month-by-month view has a shape.
+  const dayAgo = (days: number) => new Date(now.getTime() - days * 86_400_000).toISOString()
+  const past = (id: string, customer: Lead, packageName: string, packagePriceCents: number | null, activationType: Sale['activationType'], days: number): Sale => ({
+    id, lead: customer, packageName, packagePriceCents, activationType, stage: 'activated',
+    createdAt: dayAgo(days + 3), updatedAt: dayAgo(days), activatedAt: dayAgo(days),
+  })
   const sales: Sale[] = [
     sale('demo-sale-1', leads[2], 'Everyday 20GB', 19900, null, 'credit_vetting', 34),
     sale('demo-sale-2', leads[3], 'Unlimited Connect', 24900, null, 'pending_confirmation', 72),
     sale('demo-sale-3', historical[0], 'Everyday 20GB', 19900, 'ATT', 'activated', 95),
     sale('demo-sale-4', historical[1], 'Home Connect', 29900, 'Non-ATT', 'activated', 150),
     sale('demo-sale-5', historical[2], 'Everyday 20GB', null, 'ATT', 'activated', 1740),
+    past('demo-sale-6', leads[5], 'Everyday 20GB', 19900, 'ATT', 38),
+    past('demo-sale-7', leads[6], 'Unlimited Connect', 24900, 'Non-ATT', 44),
+    past('demo-sale-8', leads[7], 'Everyday 20GB', 19900, 'ATT', 71),
+    past('demo-sale-9', leads[8], 'Home Connect', 29900, 'ATT', 76),
+    past('demo-sale-10', leads[9], 'Everyday 20GB', 19900, 'Non-ATT', 79),
+    past('demo-sale-11', leads[10], 'Unlimited Connect', 24900, 'ATT', 105),
   ]
+  const referrer = (id: string, name: string, contact: string, notes: string, archived = false): Referrer => ({
+    id, name, contact, notes, archivedAt: archived ? minutesAgo(600) : null,
+    createdAt: minutesAgo(4000), updatedAt: minutesAgo(4000),
+  })
   const referrers: Referrer[] = [
-    { id: 'demo-referrer-1', name: 'Nandi Molefe', contact: '082 000 0101', createdAt: minutesAgo(4000) },
-    { id: 'demo-referrer-2', name: 'Simon Jacobs', contact: '083 000 0102', createdAt: minutesAgo(4000) },
-    { id: 'demo-referrer-3', name: 'Anele Mokoena', contact: '084 000 0103', createdAt: minutesAgo(4000) },
+    referrer('demo-referrer-1', 'Nandi Molefe', '082 000 0101', 'Prefers a WhatsApp message before a call. Works with Thandi.'),
+    referrer('demo-referrer-2', 'Simon Jacobs', '083 000 0102', 'Neighbourhood introducer. Usually refers two people a month.'),
+    referrer('demo-referrer-3', 'Anele Mokoena', '084 000 0103', 'Paused introductions while travelling.', true),
   ]
   const referral = (id: string, customer: Lead, referrerId: string, minutes: number): Referral => ({
     id, referrerId, customerName: customer.name, customerContact: '', accountNumber: customer.accountNumber,
@@ -88,6 +104,9 @@ export function createDemoWorkspace(now = new Date()): Workspace {
       [leads[3].accountNumber]: { ...emptyProfile(), attempts: [{ id: 'demo-attempt-4', at: minutesAgo(100), outcome: 'sale' }] },
       [leads[4].accountNumber]: { ...emptyProfile(), attempts: [{ id: 'demo-attempt-5', at: minutesAgo(18), outcome: 'no_answer' }] },
       [leads[11].accountNumber]: { ...emptyProfile(), doNotCall: true, attempts: [{ id: 'demo-attempt-6', at: minutesAgo(120), outcome: 'not_interested' }] },
+      // A few calls in earlier months, so the calls trend is not a wall of zeroes.
+      [leads[5].accountNumber]: { ...emptyProfile(), attempts: [...[3, 4, 6, 9, 12, 15, 18, 21].map((days, index) => ({ id: `demo-attempt-h${index}`, at: dayAgo(days + 30), outcome: 'no_answer' as const }))] },
+      [leads[6].accountNumber]: { ...emptyProfile(), attempts: [...[5, 8, 11, 14, 19, 24, 27].map((days, index) => ({ id: `demo-attempt-i${index}`, at: dayAgo(days + 34), outcome: 'no_answer' as const }))] },
     },
   }
 }

@@ -67,6 +67,7 @@ describe('calling workflow', () => {
     fireEvent.click(dialog().getByLabelText(/NON-ATT/))
     fireEvent.click(dialog().getByRole('button', { name: /COMPLETE ACTIVATION/ }))
     fireEvent.click(screen.getByRole('button', { name: /Activations/ }))
+    // New activations land in this month's group; older months stay closed until opened.
     expect(screen.getByText('A changing deal')).toBeInTheDocument()
     expect(screen.getByText('NON-ATT', { selector: '.status-pill' })).toBeInTheDocument()
 
@@ -159,7 +160,7 @@ describe('calling workflow', () => {
     expect(dialog().getByLabelText(/CUSTOMER NOTES/)).toHaveValue('Prefers Friday delivery')
   })
 
-  it('shows calling insights for the chosen period', () => {
+  it('reports monthly performance for the month in progress and the months before it', () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     try {
       const now = new Date(2026, 9, 28, 10)
@@ -168,7 +169,7 @@ describe('calling workflow', () => {
       let ws = { ...createEmptyWorkspace(now), leads: [a, b] }
       ws = recordNotInterested(ws, a, now)
       ws = recordNoAnswer(ws, b, new Date(now.getTime() - 2 * 60 * 60 * 1000))
-      ws = recordSale(ws, b, 'Insight Deal', now)
+      ws = recordSale(ws, b, 'Insight Deal', now, 20_000)
       const saleId = ws.sales[0].id
       ws = updateSaleStage(ws, saleId, 'pending_confirmation', now)
       ws = updateSaleStage(ws, saleId, 'activated', now, 'ATT')
@@ -176,18 +177,15 @@ describe('calling workflow', () => {
       render(<App />)
       fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
       expect(screen.getByRole('heading', { name: 'Insights' })).toBeInTheDocument()
-      // Today: three attempts (not interested, no answer, sale)
-      expect(screen.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
-      expect(screen.getByText('SALES').parentElement).toHaveTextContent('1')
-      expect(screen.getByText('ACTIVATIONS').parentElement).toHaveTextContent('1')
-      expect(screen.getByText('ATT vs non-ATT')).toBeInTheDocument()
-      expect(screen.getAllByText(/Insight Deal/).length).toBeGreaterThan(0)
-      // Narrow the period to today, then widen it: the counts follow the window.
-      fireEvent.click(screen.getByRole('button', { name: 'TODAY' }))
-      expect(screen.getByRole('button', { name: 'TODAY' })).toHaveAttribute('aria-pressed', 'true')
-      expect(screen.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
-      fireEvent.click(screen.getByRole('button', { name: 'ALL TIME' }))
-      expect(screen.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
+      // The month in progress, not a rolling window.
+      const figures = within(screen.getByRole('group', { name: 'Month to date' }))
+      expect(figures.getByText('ACTIVATED').parentElement).toHaveTextContent('1')
+      expect(figures.getByText('CALLS LOGGED').parentElement).toHaveTextContent('3')
+      expect(figures.getByText('SALES RECORDED').parentElement).toHaveTextContent('1')
+      // Every activation is reachable from the month it belongs to.
+      fireEvent.click(screen.getByRole('button', { name: /October 2026: 1\. Open activations/ }))
+      expect(screen.getByRole('dialog')).toHaveTextContent('Older Person')
+      expect(screen.getByRole('dialog')).toHaveTextContent('Insight Deal')
     } finally { vi.useRealTimers() }
   })
 
@@ -321,25 +319,89 @@ describe('calling workflow', () => {
     } finally { vi.useRealTimers() }
   })
 
-  it('filters activation totals and records by today or this month', () => {
+  it('groups activations by the month they activated in', () => {
     const now = new Date()
-    const lastYear = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate(), 10)
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 12, 10)
     const a = makeLead('5-801', { name: 'Today Person' }), b = makeLead('5-802', { name: 'Old Person' })
     let ws = { ...createEmptyWorkspace(now), leads: [a, b] }
     ws = recordSale(ws, a, 'Current', now)
     let id = ws.sales[0].id
     ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', now), id, 'activated', now, 'ATT')
-    ws = recordSale(ws, b, 'Previous', lastYear)
+    ws = recordSale(ws, b, 'Previous', lastMonth)
     id = ws.sales[0].id
-    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', lastYear), id, 'activated', lastYear, 'Non-ATT')
+    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', lastMonth), id, 'activated', lastMonth, 'Non-ATT')
     localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: /Activations/ }))
+    // This month opens with its own group; last month is a separate, collapsed group.
+    const thisMonthGroup = screen.getByRole('region', { name: `${new Intl.DateTimeFormat('en-ZA', { month: 'long', year: 'numeric' }).format(now)} activations` })
+    expect(within(thisMonthGroup).getByText('Today Person')).toBeInTheDocument()
+    expect(within(thisMonthGroup).queryByText('Old Person')).not.toBeInTheDocument()
+    // The month is the default view, so only this month's group is shown.
+    expect(screen.getAllByRole('button', { name: /activated$/ })).toHaveLength(1)
+    fireEvent.change(screen.getByLabelText('Activation period'), { target: { value: 'last' } })
     expect(screen.getByText('Old Person')).toBeInTheDocument()
-    fireEvent.change(screen.getByLabelText('Activation period'), { target: { value: 'today' } })
-    expect(screen.getByText('Today Person')).toBeInTheDocument()
-    expect(screen.queryByText('Old Person')).not.toBeInTheDocument()
+    expect(screen.queryByText('Today Person')).not.toBeInTheDocument()
     expect(screen.getByText('SHOWING 1 OF 1 ACTIVATIONS')).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Activation period'), { target: { value: 'all' } })
+    // All time keeps one group per month; older months start closed but can be opened.
+    const toggles = screen.getAllByRole('button', { name: /activated$/ })
+    expect(toggles).toHaveLength(2)
+    expect(toggles[0]).toHaveAttribute('aria-expanded', 'true')
+    const older = toggles[1]
+    expect(older).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(older)
+    expect(older).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('Old Person')).toBeInTheDocument()
+  })
+
+  it('sets a monthly activation target and measures the month against it', () => {
+    const now = new Date()
+    const a = makeLead('5-901', { name: 'Target Person' })
+    let ws = { ...createEmptyWorkspace(now), leads: [a] }
+    ws = recordSale(ws, a, 'Target Deal', now, 20_000)
+    const id = ws.sales[0].id
+    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', now), id, 'activated', now, 'ATT')
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /Data & settings/ }))
+    fireEvent.change(screen.getByLabelText('Activations per month'), { target: { value: '4' } })
+    fireEvent.click(screen.getByRole('button', { name: 'SAVE' }))
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).settings.monthlyActivationTarget).toBe(4)
+    fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
+    expect(screen.getByText('1 of 4')).toBeInTheDocument()
+    expect(screen.getByText('3 TO GO')).toBeInTheDocument()
+    // A target is a benchmark, not a change to what is counted.
+    fireEvent.click(screen.getByRole('button', { name: /Data & settings/ }))
+    fireEvent.change(screen.getByLabelText('Activations per month'), { target: { value: '' } })
+    fireEvent.click(screen.getByRole('button', { name: 'SAVE' }))
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).settings.monthlyActivationTarget).toBeNull()
+  })
+
+  it('opens the activation log on the month chosen from the chart', () => {
+    const now = new Date()
+    const lastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 12, 10)
+    const a = makeLead('5-911', { name: 'This Month Person' }), b = makeLead('5-912', { name: 'Last Month Person' })
+    let ws = { ...createEmptyWorkspace(now), leads: [a, b] }
+    ws = recordSale(ws, a, 'Current', now)
+    let id = ws.sales[0].id
+    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', now), id, 'activated', now, 'ATT')
+    ws = recordSale(ws, b, 'Previous', lastMonth)
+    id = ws.sales[0].id
+    ws = updateSaleStage(updateSaleStage(ws, id, 'pending_confirmation', lastMonth), id, 'activated', lastMonth, 'Non-ATT')
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /Insights/ }))
+    const label = new Intl.DateTimeFormat('en-ZA', { month: 'long', year: 'numeric' }).format(lastMonth)
+    fireEvent.click(screen.getByRole('button', { name: `${label}: 1. Open activations.` }))
+    const sheet = within(screen.getByRole('dialog'))
+    // The dialog opens straight on that month, so no extra filtering is needed.
+    expect(sheet.getByText('Last Month Person')).toBeInTheDocument()
+    expect(sheet.queryByText('This Month Person')).not.toBeInTheDocument()
+    const thisLabel = new Intl.DateTimeFormat('en-ZA', { month: 'long', year: 'numeric' }).format(now)
+    fireEvent.click(sheet.getByRole('button', { name: `${thisLabel}: 1 activation` }))
+    expect(sheet.getByText('This Month Person')).toBeInTheDocument()
+    expect(sheet.queryByText('Last Month Person')).not.toBeInTheDocument()
   })
 
   it('accepts a valid workspace update from another tab on the same origin', () => {
@@ -396,6 +458,23 @@ describe('calling workflow', () => {
     fireEvent.click(dialog().getByRole('button', { name: /CLEAR SAMPLE DATA/ }))
     expect(screen.getByRole('heading', { name: 'Real Person' })).toBeInTheDocument()
     expect(screen.getByText(/nothing was cleared/)).toBeInTheDocument()
+  })
+
+  it('loads the sample workspace back after it was cleared', () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /CLEAR SAMPLE DATA/ }))
+    fireEvent.click(dialog().getByRole('button', { name: /CLEAR SAMPLE DATA/ }))
+    expect(screen.queryByText(/SAMPLE DATA/)).not.toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).isDemo).toBe(false)
+    fireEvent.click(screen.getByRole('button', { name: /Data & settings/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'LOAD SAMPLE DATA' }))
+    expect(dialog().getByText(/is replaced by the sample data/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: 'LOAD SAMPLE DATA' }))
+    // The sample is clearly marked again, and settings the user chose survive.
+    expect(screen.getByText('SAMPLE DATA')).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).isDemo).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: /Data & settings/ }))
+    expect(screen.getByRole('button', { name: 'LOADED' })).toBeDisabled()
   })
 
   it('restores saved work after unmount and remount', () => {

@@ -102,8 +102,7 @@ describe('referral workflow', () => {
     fireEvent.click(dialog().getByRole('button', { name: 'MOVE BACK' }))
     openReferrals()
     expect(referralRow('New Customer').getByText('Paid · review')).toBeInTheDocument()
-    expect(referralRow('New Customer').getByText(/recorded activation is missing, has changed, or has no valid price/)).toBeInTheDocument()
-    expect(referralRow('New Customer').getByText(/Any difference is excluded from ready-to-pay totals/)).toBeInTheDocument()
+    expect(referralRow('New Customer').getByText('No comparable price on the activation.')).toBeInTheDocument()
     expect(referralRow('New Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
     fireEvent.click(referralRow('New Customer').getByRole('button', { name: 'PAYMENT HISTORY' }))
     expect(dialog().getByText(/Everyday plan/)).toBeInTheDocument()
@@ -160,9 +159,9 @@ describe('referral workflow', () => {
   })
 
   it.each([
-    { original: 20_000, edited: '200.01', paid: 'R20.00', recalculated: 'R30.00', result: 'Possible shortfall: R10.00.' },
-    { original: 20_001, edited: '200.00', paid: 'R30.00', recalculated: 'R20.00', result: 'Possible overpayment: R10.00.' },
-    { original: 20_000, edited: '199.99', paid: 'R20.00', recalculated: 'R20.00', result: 'The reward amount is unchanged.' },
+    { original: 20_000, edited: '200.01', paid: 'R20.00', recalculated: 'R30.00', result: 'shortfall R10.00' },
+    { original: 20_001, edited: '200.00', paid: 'R30.00', recalculated: 'R20.00', result: 'overpaid R10.00' },
+    { original: 20_000, edited: '199.99', paid: 'R20.00', recalculated: 'R20.00', result: 'unchanged' },
   ])('reviews a changed package price: $result', ({ original, edited, paid, recalculated, result }) => {
     const now = new Date()
     const lead = makeLead('5-779', { name: 'Price Review Customer' })
@@ -185,8 +184,7 @@ describe('referral workflow', () => {
 
     const row = () => screen.getByRole('article', { name: 'Referral for Price Review Customer' })
     expect(row()).toHaveTextContent('Paid · review')
-    expect(row()).toHaveTextContent(`Recalculated reward: ${recalculated} · Recorded as paid: ${paid}. ${result}`)
-    expect(row()).toHaveTextContent('additional payments or refunds cannot be recorded here')
+    expect(row()).toHaveTextContent(`Recalculated ${recalculated} · paid ${paid} · ${result}.`)
     expect(referralRow('Price Review Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
     const summary = within(screen.getByRole('region', { name: 'Referral summary' }))
     expect(summary.getByText('READY TO PAY').parentElement).toHaveTextContent('R0.00')
@@ -208,7 +206,7 @@ describe('referral workflow', () => {
     fireEvent.click(dialog().getByRole('button', { name: 'SAVE CHANGES' }))
     openReferrals()
     expect(referralRow('Price Review Customer').getByText('Paid', { selector: '.status-pill' })).toBeInTheDocument()
-    expect(row()).not.toHaveTextContent('Payment needs review')
+    expect(row()).not.toHaveTextContent('Needs review')
     expect(referralRow('Price Review Customer').queryByRole('button', { name: /MARK PAID/ })).not.toBeInTheDocument()
   })
 
@@ -291,5 +289,147 @@ describe('referral workflow', () => {
     expect(screen.getByText(/Payment not recorded/)).toBeInTheDocument()
     expect(referralRow('Changed Customer').getByText('R30.00')).toBeInTheDocument()
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).referrals[0].payments).toEqual([])
+  })
+})
+
+describe('referrer management', () => {
+  const seeded = (now = new Date()) => {
+    let ws = createEmptyWorkspace(now)
+    ws.settings.autoCopy = false
+    ws = addReferrer(ws, 'Nandi Molefe', '082 000 0101', now, 'Prefers a WhatsApp before a call.')
+    ws = addReferrer(ws, 'Simon Jacobs', '', now)
+    ws = saveReferral(ws, { referrerId: ws.referrers[0].id, customerName: 'Linked Customer', customerContact: '', accountNumber: null }, now)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    return ws
+  }
+  // Referral rows and referrer cards both use h3, so scope by the card class rather than the level.
+  const referrerCardNamed = (name: string) => {
+    const heading = [...document.querySelectorAll<HTMLElement>('h3.referrer-name')].find(item => item.textContent === name)
+    if (!heading) throw new Error(`No referrer card for ${name}`)
+    return within(heading.closest('article')!)
+  }
+  const referrerNames = () => [...document.querySelectorAll<HTMLElement>('h3.referrer-name')].map(item => item.textContent)
+
+  it('adds a referrer on their own, with a note, and shows duplicate warnings', () => {
+    cleanWorkspace()
+    render(<App />)
+    openReferrals()
+    fireEvent.click(screen.getByRole('button', { name: 'ADD REFERRER' }))
+    expect(dialog().getByRole('heading', { name: 'Add a referrer.' })).toBeInTheDocument()
+    expect(dialog().getByRole('button', { name: 'ADD REFERRER' })).toBeDisabled()
+    fireEvent.change(dialog().getByLabelText(/^NAME/), { target: { value: 'Thando Nkosi' } })
+    fireEvent.change(dialog().getByLabelText(/^CONTACT/), { target: { value: '083 555 0101' } })
+    fireEvent.change(dialog().getByLabelText(/PRIVATE NOTE/), { target: { value: 'Runs the salon on 4th Avenue.' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'ADD REFERRER' }))
+    const card = referrerCardNamed('Thando Nkosi')
+    expect(card.queryByText('083 555 0101')).toBeInTheDocument()
+    expect(card.queryByText('Runs the salon on 4th Avenue.')).toBeInTheDocument()
+    expect(card.queryByText('No referrals yet')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'ADD REFERRER' }))
+    fireEvent.change(dialog().getByLabelText(/^NAME/), { target: { value: '  thando   nkosi ' } })
+    expect(dialog().getByText(/may be Thando Nkosi, already on your list/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: 'ADD REFERRER' }))
+    // A warning is not a block, because two people can genuinely share a name.
+    const stored = JSON.parse(localStorage.getItem(STORAGE_KEY)!).referrers as { name: string }[]
+    expect(stored.map(person => person.name.toLowerCase().replace(/\s+/g, ' '))).toEqual(['thando nkosi', 'thando nkosi'])
+  })
+
+  it('edits a referrer everywhere they appear and keeps the recorded payment name', () => {
+    const now = new Date()
+    const ws = seeded(now)
+    const updated = { ...ws, referrers: ws.referrers.map(referrer => referrer.id === ws.referrers[0].id
+      ? { ...referrer, name: 'Nandi M. Molefe', notes: 'Renamed after her wedding.', updatedAt: new Date(now.getTime() + 1000).toISOString() }
+      : referrer) }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+    render(<App />)
+    openReferrals()
+    expect(referralRow('Linked Customer').getByText('Nandi M. Molefe')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Edit referrer Nandi M. Molefe' }))
+    expect(dialog().getByLabelText(/^NAME/)).toHaveValue('Nandi M. Molefe')
+    expect(dialog().getByLabelText(/PRIVATE NOTE/)).toHaveValue('Renamed after her wedding.')
+    fireEvent.change(dialog().getByLabelText(/^CONTACT/), { target: { value: '082 999 0000' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'SAVE CHANGES' }))
+    expect(referrerCardNamed('Nandi M. Molefe').queryByText('082 999 0000')).toBeInTheDocument()
+    expect(referralRow('Linked Customer').getByText('082 999 0000')).toBeInTheDocument()
+
+    // Another tab changed the record first: the stale dialog refuses to overwrite it.
+    fireEvent.click(screen.getByRole('button', { name: 'Edit referrer Nandi M. Molefe' }))
+    const changed = { ...updated, referrers: updated.referrers.map(referrer => referrer.id === updated.referrers[0].id
+      ? { ...referrer, updatedAt: new Date(now.getTime() + 5000).toISOString() } : referrer) }
+    fireEvent(window, new StorageEvent('storage', { key: STORAGE_KEY, newValue: JSON.stringify(changed) }))
+    fireEvent.change(dialog().getByLabelText(/^NAME/), { target: { value: 'Stale Name' } })
+    fireEvent.click(dialog().getByRole('button', { name: 'SAVE CHANGES' }))
+    expect(screen.getByText(/Referrer changed in another tab/)).toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).referrers[0].name).toBe('Nandi M. Molefe')
+  })
+
+  it('archives and restores a referrer without losing referrals, and keeps them out of new ones', () => {
+    const now = new Date()
+    let ws = createEmptyWorkspace(now)
+    ws.settings.autoCopy = false
+    ws = addReferrer(ws, 'Nandi Molefe', '082 000 0101', now, 'Met at the taxi rank.')
+    ws = addReferrer(ws, 'Simon Jacobs', '', now)
+    ws = saveReferral(ws, { referrerId: ws.referrers[1].id, customerName: 'Simon Customer', customerContact: '', accountNumber: null }, now)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+    openReferrals()
+
+    // A person with referrals can still be archived, unlike deletion.
+    fireEvent.click(screen.getByRole('button', { name: 'Archive referrer Simon Jacobs' }))
+    expect(dialog().getByText(/existing referrals, totals and payment history are kept/)).toBeInTheDocument()
+    fireEvent.click(dialog().getByRole('button', { name: 'ARCHIVE REFERRER' }))
+    // The referral itself is untouched and still shows the attribution.
+    expect(referralRow('Simon Customer').getByText('Simon Jacobs')).toBeInTheDocument()
+
+    // Archived people leave the active list but remain available under their own filter.
+    expect(referrerNames()).toEqual(['Nandi Molefe'])
+    fireEvent.change(screen.getByLabelText('Filter referrers'), { target: { value: 'archived' } })
+    expect(referrerNames()).toEqual(['Simon Jacobs'])
+    expect(referrerCardNamed('Simon Jacobs').queryByText('ARCHIVED')).toBeInTheDocument()
+
+    // A new introduction cannot choose them.
+    fireEvent.click(screen.getAllByRole('button', { name: 'ADD REFERRAL' })[0])
+    const options = within(dialog().getByLabelText(/WHO REFERRED THEM/)).getAllByRole('option') as HTMLOptionElement[]
+    expect(options.map(option => option.textContent)).not.toContain('Simon Jacobs')
+    fireEvent.click(dialog().getByRole('button', { name: 'CANCEL' }))
+
+    fireEvent.click(screen.getByRole('button', { name: 'Restore referrer Simon Jacobs' }))
+    expect(screen.getByText(/is active again/)).toBeInTheDocument()
+    fireEvent.change(screen.getByLabelText('Filter referrers'), { target: { value: 'active' } })
+    expect(referrerNames()).toEqual(expect.arrayContaining(['Simon Jacobs', 'Nandi Molefe']))
+    expect(referrerCardNamed('Simon Jacobs').queryByText('ARCHIVED')).not.toBeInTheDocument()
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).referrers.find((person: { name: string }) => person.name === 'Simon Jacobs').archivedAt).toBeNull()
+  })
+
+  it('scopes the tracker to one referrer and searches notes', () => {
+    const now = new Date()
+    let ws = seeded(now)
+    ws = saveReferral(ws, { referrerId: ws.referrers[1].id, customerName: 'Second Customer', customerContact: '', accountNumber: null }, now)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(ws))
+    render(<App />)
+    openReferrals()
+    expect(screen.getAllByRole('article', { name: /^Referral for/ })).toHaveLength(2)
+    fireEvent.click(referrerCardNamed('Nandi Molefe').getByRole('button', { name: /VIEW REFERRALS/ }))
+    expect(screen.getAllByRole('article', { name: /^Referral for/ })).toHaveLength(1)
+    expect(screen.queryByRole('article', { name: 'Referral for Second Customer' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /Clear referrer filter/ }))
+    expect(screen.getAllByRole('article', { name: /^Referral for/ })).toHaveLength(2)
+
+    // The private note is searchable, so a note-only hint still finds the person.
+    fireEvent.change(screen.getByLabelText('Search referrers'), { target: { value: 'WhatsApp' } })
+    expect(referrerNames()).toEqual(['Nandi Molefe'])
+    fireEvent.change(screen.getByLabelText('Search referrers'), { target: { value: 'nobody' } })
+    expect(screen.getByText(/No referrers match that search/)).toBeInTheDocument()
+  })
+
+  it('shows the note and the archived sample referrer on the demo workspace', () => {
+    render(<App />)
+    openReferrals()
+    expect(referrerCardNamed('Nandi Molefe').queryByText('Prefers a WhatsApp message before a call. Works with Thandi.')).toBeInTheDocument()
+    // The sample workspace includes one archived person, so the filter must reveal them.
+    fireEvent.change(screen.getByLabelText('Filter referrers'), { target: { value: 'archived' } })
+    expect(referrerNames()).toEqual(['Anele Mokoena'])
+    expect(referrerCardNamed('Anele Mokoena').queryByText('ARCHIVED')).toBeInTheDocument()
   })
 })

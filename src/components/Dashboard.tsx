@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { ArrowRight, CalendarClock, Check, CheckCheck, ClipboardPaste, Copy, Headphones, Layers3, ListFilter, RefreshCw, UsersRound } from 'lucide-react'
 import { formatDate, formatListDate, relativeDue } from '../domain/dates'
+import { monthlyPerformance } from '../domain/monthly'
 import { createQueueIndex, readiness, type QueueItem } from '../domain/queue'
 import type { Callback, Lead, View, Workspace } from '../domain/types'
 import { EmptyState, Initials, Toggle } from './ui'
@@ -42,8 +43,7 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
   const activeSales = workspace.sales.filter(sale => sale.stage === 'credit_vetting' || sale.stage === 'pending_confirmation')
   const vetting = activeSales.filter(sale => sale.stage === 'credit_vetting').length
   const confirmation = activeSales.filter(sale => sale.stage === 'pending_confirmation').length
-  const activations = workspace.sales.filter(sale => sale.stage === 'activated')
-  const att = activations.filter(sale => sale.activationType === 'ATT').length
+  const month = useMemo(() => monthlyPerformance(workspace, now, 6), [workspace, now])
   const due = workspace.callbacks.filter(item => new Date(item.dueAt).getTime() <= now.getTime()).length
   const dueInQueue = queue.filter(item => item.callback).length
   const retries = queue.filter(item => item.attemptsToday > 0 && !item.callback).length
@@ -66,7 +66,7 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
         <button className="stat stat-green" onClick={() => onNavigate('leads')}><UsersRound size={14} /><strong>{formatCount(queue.length)}</strong><span>READY</span></button>
         <button className="stat stat-blue" onClick={() => onNavigate('callbacks')}><CalendarClock size={14} /><strong>{formatCount(due)}</strong><span>DUE</span></button>
         <button className="stat stat-violet" onClick={() => onNavigate('pipeline')}><Layers3 size={14} /><strong>{formatCount(activeSales.length)}</strong><span>PIPELINE</span></button>
-        <button className="stat stat-amber" onClick={() => onNavigate('activations')}><CheckCheck size={14} /><strong>{formatCount(activations.length)}</strong><span>ACTIVATED</span></button>
+        <button className="stat stat-amber" onClick={() => onNavigate('activations')}><CheckCheck size={14} /><strong>{formatCount(month.current.pipeline.activated)}</strong><span>THIS MONTH</span></button>
       </div>
     </div>
 
@@ -113,9 +113,8 @@ export function Dashboard({ workspace, now, queue, lead, callback, importMode, o
             <div className="pipeline-lines">
               <div className="line-vetting"><span><i /> Credit vetting</span><strong>{formatCount(vetting)}</strong></div>
               <div className="line-confirm"><span><i /> Awaiting confirmation</span><strong>{formatCount(confirmation)}</strong></div>
-              <div className="line-live"><span><i /> Activated</span><strong>{formatCount(activations.length)}</strong></div>
+              <div className="line-live"><span><i /> Activated this month</span><strong>{formatCount(month.current.pipeline.activated)}</strong></div>
             </div>
-            <p className="rail-note">{att} ATT · {activations.length - att} non-ATT activated all time.</p>
             <button className="panel-link" onClick={() => onNavigate('pipeline')}>SALES PIPELINE <ArrowRight size={14} /></button>
           </>}
           {rail === 'activity' && <>

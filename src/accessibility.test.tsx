@@ -29,6 +29,20 @@ describe('accessibility smoke checks', () => {
     fireEvent.click(screen.getByRole('button', { name: 'CLEAR SAMPLE & CONTINUE' }))
     await checkAccessibility()
   })
+  it('keeps referrer management and its filters accessible', async () => {
+    render(<App />)
+    fireEvent.click(screen.getByRole('button', { name: /Referrals/ }))
+    fireEvent.change(screen.getByLabelText('Filter referrers'), { target: { value: 'all' } })
+    fireEvent.change(screen.getByLabelText('Filter referrers'), { target: { value: 'archived' } })
+    await checkAccessibility()
+    fireEvent.click(screen.getByRole('button', { name: 'ADD REFERRER' }))
+    await checkAccessibility()
+    fireEvent.click(screen.getByRole('button', { name: 'CANCEL' }))
+    // The archived filter is still applied, so switch back before opening an active person.
+    fireEvent.change(screen.getByLabelText('Filter referrers'), { target: { value: 'active' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Edit referrer Nandi Molefe' }))
+    await checkAccessibility()
+  })
   it('keeps the import dialog accessible', async () => {
     render(<App />)
     fireEvent.click(screen.getByRole('button', { name: 'IMPORT LEADS' }))
