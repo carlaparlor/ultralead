@@ -90,8 +90,8 @@ export function ActivationsView({ workspace, now, onEdit, onUndo, onRemove, onOp
 
   return <>
     <div className={`page-heading view-heading activation-heading ${fixedPeriod ? 'activation-heading-dialog' : ''}`}>
-      <div><div className="eyebrow referral-eyebrow"><span className="eyebrow-line" /> MONTH BY MONTH</div><h1>Activations</h1><p>{periodLabel(period, now)}</p></div>
-      {!fixedPeriod && <span className="heading-note">{thisMonthCount ? `${thisMonthCount} this month` : 'none this month yet'}{previousGroup ? ` · ${previousGroup.count} last month` : ''}</span>}
+      <div><h1>Activations</h1><p>{periodLabel(period, reference)}</p></div>
+      {!fixedPeriod && <span className="heading-note">{thisMonthCount ? `${thisMonthCount} this month` : 'none this month'}{previousGroup ? ` · ${previousGroup.count} last month` : ''}</span>}
     </div>
 
     <div className="view-summary activation-summary">
@@ -127,7 +127,6 @@ export function ActivationsView({ workspace, now, onEdit, onUndo, onRemove, onOp
               <button className="activation-month-toggle" onClick={() => toggle(group.key)} aria-expanded={!closed}>
                 <ChevronRight size={15} className={closed ? '' : 'is-open'} />
                 <span className="activation-month-label">{group.label}</span>
-                {group.isCurrent && <span className="month-now">NOW</span>}
                 <span className="activation-month-count">{sales.length} activated</span>
               </button>
               <div className="activation-month-figures">
