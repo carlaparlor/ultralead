@@ -16,7 +16,6 @@ export function Sidebar({ view, onNavigate, workspace, mobileOpen, onClose }: { 
     leads: workspace.leads.length,
     callbacks: workspace.callbacks.length,
     pipeline: workspace.sales.filter(sale => sale.stage === 'credit_vetting' || sale.stage === 'pending_confirmation').length,
-    activations: workspace.sales.filter(sale => sale.stage === 'activated').length,
     referrals: workspace.referrals.length,
   }
   return <>
